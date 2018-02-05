@@ -30,9 +30,8 @@ for i in sys.argv[1:]:
     immigration_processing = form['IMMIGRATION PROCESSING AT']['/V']
     birthcountry = form['COUNTRY OF BIRTH']['/V']
     sex = form['SEX']['/V']
-    sex_entry_to_gender={'male':0,'m':0, 'man':0,
-    'female':1,'f':1,'woman':1,'femme':1,
-    'nonbinary':2,'other':2,'nb':2,'na':2,'fluid':2,'genderfluid':2}
+    sex_entry_to_gender={'male':0,'m':0, 'man':0, 'homme':0,'masc':0,
+    'female':1,'f':1,'woman':1,'femme':1}
     possessive = ['His','Her','Their']
     subject = ['He','She','They']
     pers_object =['Him','Her','They']
@@ -64,8 +63,8 @@ for i in sys.argv[1:]:
     '[she/he]':subject,
 
     '[position]': position,
-    '[foreign production company]':'FOREIGN???',
-    '[foreign production ': 'FOREIGN???',
+    '[foreign production company]':'[FOREIGN PRODUCTION COMPANY]',
+    '[foreign production ': '[FOREIGN PRODUCTION COMPANY]',
 
     '[producer]': company,
     '[city]':immigration_processing,
@@ -75,13 +74,13 @@ for i in sys.argv[1:]:
     '[job]': jobname,
     '[start date]':startdate,
     '[end date]': enddate,
-    '[budget]': 'Budget?',
+    '[budget]': '[BUDGET]',
     '[nationality]': birthcountry,
     '[position]': position,
-    '[days in canada]': 'DayCalculation',
+    '[days in canada]': '[DayCalculation]',
 
-    '[agency or client]': 'Agency?',
-    '[agency]':'Agency?',
+    '[agency or client]': '[AGENCY]',
+    '[agency]':'[AGENCY]',
 
     '[shoot dates]':startdate+' and '+enddate,
 
