@@ -2,9 +2,7 @@ import sys
 from PyPDF2 import PdfFileWriter, PdfFileReader
 from docx import Document
 import re
-import sys
-reload(sys)
-sys.setdefaultencoding('utf8')
+
 
 # Loop through forms supplied as arguments
 for i in sys.argv[1:]:
@@ -26,11 +24,26 @@ for i in sys.argv[1:]:
     tel = form['TELEPHONE NUMBER']['/V']
     shootdates = form['DATE OF JOB SHOOTING']['/V']
     shootdates = re.split('(to|-)',shootdates)
-    startdate = shootdates[0]
-    enddate = shootdates[-1]
+    startdate = shootdates[0].strip()
+    enddate = shootdates[-1].strip()
     birthdate = form['DATE OF BIRTH MMDDYYYY']['/V']
     immigration_processing = form['IMMIGRATION PROCESSING AT']['/V']
     birthcountry = form['COUNTRY OF BIRTH']['/V']
+    sex = form['SEX']['/V']
+    sex_entry_to_gender={'male':0,'m':0, 'man':0,
+    'female':1,'f':1,'woman':1,'femme':1,
+    'nonbinary':2,'other':2,'nb':2,'na':2,'fluid':2,'genderfluid':2}
+    possessive = ['His','Her','Their']
+    subject = ['He','She','They']
+    pers_object =['Him','Her','They']
+    sex = sex.lower().replace('-','').replace(' ','').encode('ascii')
+    if sex in sex_entry_to_gender.keys():
+        d = sex_entry_to_gender[sex]
+    else:
+        d = 2
+    possessive = possessive[d]
+    subject = subject[d]
+    pers_object = pers_object[d]
 
     # The replacement dictionary
     unpaid_replace = {'[name, title]': fullname +', '+position,
@@ -40,11 +53,20 @@ for i in sys.argv[1:]:
     '[visitor name]' : fullname,
     '[visitor name' : fullname,
 
-    'dob':'',
-    'm/d/y': birthdate,
+    'dob m/d/y': birthdate,
+
+    'her':possessive,
+    'her/':possessive,
+    '[her':possessive,
+    '[her/':possessive,
+    '[her/his]':possessive,
+
+    '[she/he]':subject,
 
     '[position]': position,
-    '[foreign production company]':company,
+    '[foreign production company]':'FOREIGN???',
+    '[foreign production ': 'FOREIGN???',
+
     '[producer]': company,
     '[city]':immigration_processing,
     '[name of job]': jobname,
@@ -56,53 +78,76 @@ for i in sys.argv[1:]:
     '[budget]': 'Budget?',
     '[nationality]': birthcountry,
     '[position]': position,
-    '[foreign production company]': 'Foreign?',
     '[days in canada]': 'DayCalculation',
 
     '[agency or client]': 'Agency?',
     '[agency]':'Agency?',
 
-
-
     '[shoot dates]':startdate+' and '+enddate,
 
 
-    u'[description of client\u2019s business]':'a smuggler',
+    u'[description of client\u2019s business]':'BUSINESS DESCRIPTION?',
 
     '[location]':'Location?',
-    '[production dates]': startdate+' and '+enddate,
-    ']':''
+    '[production dates]': startdate+' and '+enddate+',',
+    u'[r186(a)]':u'[r186(a)]'
     }
 
     # write UNPAID .docx file with client name
-    invite = Document('InvitationLetterTemplate.docx')
+    invite = Document('Templates/unpaid.docx')
     for p in invite.paragraphs:
-            inline = p.runs
-            # Loop added to work with runs (strings with same style)
-            for i in range(len(inline)):
-                print(inline[i].text)
-                m = re.findall('(\[.*?\]|\[.*|\]|DOB M\/D\/Y)', inline[i].text)
-                for replacee in m:
-                    print(replacee)
-                    replacee_0 = replacee.lower()
-                    new_text = inline[i].text.replace(replacee, unpaid_replace[replacee_0])
-                    inline[i].text = new_text
-    invite.save(fullname +' unpaid.docx')
+        inline = p.runs
+        # Loop added to work with runs (strings with same style)
+        par_text =''
+        text_style=None
+        for i in range(len(inline)):
+            # print(inline[i].text)
+            text_style = inline[i].style
+            par_text = par_text + inline[i].text
+        boxes = re.findall('(\[.*?\])', par_text)
+        match = False
+        for box in boxes:
+            print(box)
+            match=True
+            box_0 = box.lower()
+            entry = unpaid_replace[box_0].strip()
+            print(entry + '!')
+            par_text = par_text.replace(box, entry).replace('  ',' ')
+        # print(par_text)
+        if match:
+            p.clear()
+            p.add_run(par_text, text_style)
+    invite.save('Output/'+fullname +' unpaid.docx')
 
     # Write PAID .docx file w/ client info
-    invite2 = Document('/Users/sme/Desktop/form2doc/OPCBVLetter_Blank.docx')
+    invite2 = Document('Templates/paid.docx')
     for p in invite2.paragraphs:
-            inline = p.runs
-            # Loop added to work with runs (strings with same style)
-            for i in range(len(inline)):
-                # print(inline[i].text)
-                m = re.findall('(\[.*?\]|\[.*|\]|DOB M\/D\/Y)', inline[i].text)
-                for replacee in m:
-                    # print(replacee)
-                    replacee_0 = replacee.lower()
-                    new_text = inline[i].text.replace(replacee, unpaid_replace[replacee_0])
-                    inline[i].text = new_text
-    invite2.save(fullname +' paid.docx')
+        inline = p.runs
+        # Loop added to work with runs (strings with same style)
+        par_text=''
+        text_style=None
+        for i in range(len(inline)):
+            text_style = inline[i].style
+            par_text = par_text + inline[i].text
+        boxes = re.findall('(\[.*?\]|DOB M\/D\/Y)', par_text)
+        match = False
+        for box in boxes:
+            match = True
+            # print(box)
+            box_0 = box.lower()
+            entry = unpaid_replace[box_0].strip()
+            # print(entry)
+            if par_text.find(box) >1:
+                if par_text[par_text.find(box)-2] == '.':
+                    entry=entry.title()
+            par_text = par_text.replace(box, entry).replace('  ',' ')
+        # print(par_text + ' END PAR ')
+        # print(p.style)
+        if match:
+            p.clear()
+            p.add_run(par_text, text_style)
+        # print(p.style)
+    invite2.save('Output/'+fullname +' paid.docx')
 
 ### FOR DEBUGGING
 
