@@ -3,10 +3,12 @@ from PyPDF2 import PdfFileWriter, PdfFileReader
 import os
 import re
 
-from form2doc import form2doc, get_forms
+from form2doc import form2doc
 
 # Dictionary mapping input form paths to PyPDF form-field dictionaries
 formpaths_to_formdicts = {}
+# Doctionary mapping input form paths to (title to entry) form-field dictionaries
+formpaths_to_fielddicts ={}
 
 template_form_path = None
 # PdfFileReader object
@@ -16,7 +18,8 @@ template_fields = None
 # Dictionary of Output Templates to lists of rules, each with at least one string pointers
 # to potentit\al worker form field, and one to an output template field
 out_tmplts_to_rules = {}
-
+# Dictionary of input paths to lists of output paths
+ins_to_outs = {}
 
 def add_rule():
     pass
@@ -25,7 +28,7 @@ def save_formedit():
     f = app.getTabbedFrameSelectedTab('Worker Forms')
     print(f)
     worker_entries = formpaths_to_formdicts[f]
-    fields = {}
+    fields = formpaths_to_fielddicts[f]
     # fields0=fields
     print('hey')
     for k in worker_entries.keys():
@@ -101,6 +104,11 @@ def addIn(data):
             # worker_entries = get_forms(f, inputs_to_form_entries)
             worker_entries= PdfFileReader(file(f,'rb')).getFields()
             formpaths_to_formdicts[f] = worker_entries
+            fields = {}
+            for k in worker_entries.keys():
+                print(k + ' : '+worker_entries[k]['/V'])
+                fields[k]= worker_entries[k]['/V']
+            formpaths_to_fielddicts[f] = fields
             try:
                 worker_fullname = worker_entries['Last']['/V']
             except KeyError:
@@ -134,6 +142,8 @@ def addIn(data):
                             app.setEntry(key+f,worker_entries[key]['/V'])
                         except TypeError:
                             print('no '+key+ ' form in '+ f)
+                        except KeyError:
+                            print('why is this happening')
                         # app.addScrolledTextArea(key+f,i,4)
 
                         i+=1
@@ -194,6 +204,8 @@ def update_tab_select():
         if selected_tab != selected_form:
             app.setTabbedFrameSelectedTab('Worker Forms', selected_form)
 
+
+
 def update_form_path_select():
     selected_form = app.getListBox('inputs')[0]
     selected_tab = app.getTabbedFrameSelectedTab('Worker Forms')
@@ -228,6 +240,10 @@ def update_form_template_list():
 def save_form():
     pass
 
+def generate_output():
+    sel_inpath = app.getListBox('inputs')
+    out_template = app.openBox()
+
 
 with gui("OPC form2doc") as app:
     app.setStretch('both')
@@ -245,6 +261,8 @@ with gui("OPC form2doc") as app:
 
     app.addLabel('Select Outputs','Select Outputs',0,2)
     app.addListBox('outputs',[],1,2,1,31)
+    app.addButton('Generate Output',generate_output)
+
     # with app.scrollPane('form_template_scroll',3,4):
 
     # app.addButton('Open', set_form_template,1,2)
