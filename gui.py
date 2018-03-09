@@ -243,7 +243,26 @@ def saveForm():
 
 def generateOutput():
     sel_inpath = app.getListBox('inputs')
-    out_template = app.openBox()
+    input_name = app.getTabbedFrameSelectedTab('inputs').title()
+    rulesheet = app.getTabbedFrameSelectedTab('rulesheets')
+    rulesheet_name = rulesheet.split('/')[-1].replace('.txt','')
+    out_template = app.getTabbedFrameSelectedTab('out_templates')
+    out_template_name = out_template.split('/')[-1].replace('.docx','')
+    plaintxt_out = ''
+    doc = Document(open(out_template, 'rb'))
+    for p in doc.paragraphs:
+        for r in p.runs:
+            plaintxt_out += r.text
+        plaintxt_out+='\n'
+    print(plaintxt_out)
+
+    app.openTabbedFrame('output_preview')
+    output_name = input_name+'_'+rulesheet_name+'_'+out_template_name+'.docx'
+    output_path = output_dirpath+output_name
+    with app.tab(output_path):
+        app.setTabText('output_preview', output_path, output_name)
+        app.addScrolledTextArea(output_path)
+        app.setTextArea(output_path, plaintxt_out)
 
 def updateRuleeditEntry():
     app.setEntry('rule_edit',app.getListBox(app.getTabbedFrameSelectedTab('rulesheets')+'_rules')[0])
@@ -401,10 +420,11 @@ def addRulesheet(path):
     rules = open(path,'rb').readlines()
     sheetname = path.split('/')[-1].replace('.txt','')
     app.openTabbedFrame('rulesheets')
-    with app.tab(sheetname):
-        app.addListBox(sheetname+'_rules', rules, 0,0)
-        app.setListBoxGroup(sheetname+'_rules')
-        app.setListBoxChangeFunction(sheetname+'_rules',updateRuleeditEntry)
+    with app.tab(path):
+        app.setTabText('rulesheets',path, sheetname)
+        app.addListBox(path+'_rules', rules, 0,0)
+        app.setListBoxGroup(path+'_rules')
+        app.setListBoxChangeFunction(path+'_rules',updateRuleeditEntry)
 
 with gui("OPC form2doc") as app:
     app.setStretch('both')
