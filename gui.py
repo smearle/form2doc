@@ -1,14 +1,20 @@
 from appJar import gui
+import appJar
 from PyPDF2 import PdfFileWriter, PdfFileReader
 from docx import Document
 import os
 import re
+import inspect
+import ruleFunctions
 
 from form2doc import form2doc
+from ruleFunctions import RuleParseError
 
-# A dictionary pointing distinct keys for each form (based and progressively more
-# fine-grained information) to their filepaths
-inkeys2paths = {}
+class MissingFieldError(Exception):
+    pass
+
+ins2outs = {}
+outs2ins = {}
 
 src_dir = os.path.dirname(os.path.realpath(__file__))
 # OPC entry letter rules
@@ -39,8 +45,78 @@ ins_to_outs = {}
 
 box_ptrn = re.compile('\[.*?\]')
 
-def addRule():
-    pass
+def compileRules():
+    rules = app.getAllListItems(app.getTabbedFrameSelectedTab('rulesheets')+'_rules')
+    for rule in rules:
+        if rule.replace(' ','') == '':
+            rules.delete(rule)
+    compiled_rules = [Rule(rulestr) for rulestr in rules]
+    return compiled_rules
+
+
+class Rule(object):
+    def __init__(self, rule):
+        r_pos = []
+        c_pos = []
+        op = 0
+        cl = 0
+        i = 0
+        LAST_R = True
+        # Find replacees
+        replacee_str, replacement_str = '',''
+        while rule[i:] != '':
+            if rule[i] == '[':
+                op+= 1
+            elif rule[i] == ']':
+                cl += 1
+            if op == cl:
+                if rule[i:].startswith('replaced by '):
+                    replacee_str = rule[:i]
+                    replacement_str = rule[i+12:]
+                    break
+            i+=1
+        self.replacees = re.findall(r'\[.*?\]', replacee_str)
+        self.replace_codes = re.findall(r'([\w\d]*?)(\{.*?\})',replacement_str)
+        self.replacement = replacement_str
+        infields = [replacement[1].strip('{}') for replacement in  self.replace_codes]
+        funcs = [replacement[0] for replacement in  self.replace_codes]
+        print('infields: %s'%infields)
+        print('funcs %s' % funcs)
+        for i in range(len( self.replace_codes)):
+            func = funcs[i]
+            infield = infields[i]
+            if func !=None:
+                function = func
+
+                for ruleFunc in inspect.getmembers(ruleFunctions, inspect.isfunction):
+                    if func == ruleFunc[0]:
+                        argument = infield
+                        try:
+                            argument = app.getEntry(argument+'_'+app.getTabbedFrameSelectedTab('inputs'))
+                        except:
+                            print('No input field: %s' % infield)
+                            subreplace = 'Error'
+                        try:
+                            subreplace = getattr(ruleFunctions, func)(argument)
+                        except RuleParseError:
+                            print(RuleParseError)
+                            subreplace = 'Error'
+                        break
+                    else:
+                        try:
+                            subreplace = app.getEntry(infield+'_'+app.getTabbedFrameSelectedTab('inputs'))
+                        except:
+                            print('No input field: %s' % infield)
+                            subreplace = 'Error'
+            else:
+                function = ''
+                subreplace = app.getEntry(infield+'_'+app.getTabbedFrameSelectedTab('inputs'))
+            print(function)
+            print(infield)
+            print(subreplace)
+            self.replacement = self.replacement.replace(function+'{'+infield+'}', subreplace)
+        print('replacements: %s' %  self.replacement)
+
 
 def saveFormedit():
     f = app.getTabbedFrameSelectedTab('inputs')
@@ -89,7 +165,6 @@ def getFiles(filedir, extension):
 
 def parseDropDate(data):
     # drop input processing into list of files
-    print(data)
     data = data.split(' ')
     data0 = data
     i = 0
@@ -98,7 +173,6 @@ def parseDropDate(data):
             data0[i-1] = data0[i-1]+' '+d
         i+=1
     data =[d.strip('{').strip('}') for d in data0]
-    print(data)
 
     return data
 
@@ -115,6 +189,7 @@ def addInDrop(dropdata):
         addIn(f)
 
 def addIn(filepath):
+    ins2outs[filepath]=[]
     app.openTabbedFrame('inputs')
     if filepath not in app.getAllListItems('inputs'):
         app.addListItem('inputs', filepath)
@@ -126,52 +201,32 @@ def addIn(filepath):
             fields[k]= worker_entries[k]['/V']
         formpaths_to_fielddicts[filepath] = fields
         try:
-            fullname = worker_entries['Last']['/V']
+            fullname = worker_entries['Name']['/V']
         except KeyError:
             fullname = filepath.split('/')[-1]
         except TypeError:
             fullname = filepath.split('/')[-1]
 
-        # # TODO Globalize
-        # runnerup_fields = ['POSITION  JOB TITLE', 'Email']
-        # for r in runnerup_fields:
-        #     try:
-        #         if (key in inkeys2paths) and (worker_entries[r]['/V'] != None) and (worker_entries[r]['/V'] != ''):
-        #             key += '_' + worker_entries[r]['/V']
-        #     except KeyError:
-        #         print(r +' field not found in '+ filepath)
-        # # TODO still not unique..?
-        # inkeys2paths[key] = filepath
-
-
         app.setStretch('both')
         with app.tab(filepath):
             app.setTabText('inputs',filepath,fullname)
             with app.scrollPane('Worker Form Edit' + filepath):
-                i=0
-                for key in worker_entries.keys():
-                    app.setSticky('e')
+                infields =sorted([key.strip(' ') for key in worker_entries.keys()])
 
-                    app.addLabel(key+filepath,key[:25],i,2,0)
-                    app.setLabelTooltip(key+filepath,key)
-                    # app.setStretch('both')
-                    app.setSticky('w')
-                    app.addEntry(key+filepath,i,3,1,0)
-                    # if default:
-                    #     app.setEntryDefault(key_0+f,desired_format)
+                num_infields = range(len(infields))
+                app.setSticky('e')
+                [app.addLabel(infields[i] +'_' + filepath,infields[i][:25],i,2,0) for i in num_infields]
+                [app.setLabelTooltip(infields[i]+'_'+filepath,infields[i]) for i in num_infields]
+                app.setSticky('w')
+                print([infields[i]+'_'+filepath for i in num_infields])
+                [app.addEntry(infields[i]+'_'+filepath,i,3,1,0)for i in num_infields]
+                try:
+                    [app.setEntry(infields[i]+'_'+filepath,worker_entries[infields[i]]['/V']) for i in num_infields]
+                except TypeError:
+                    pass
+                except KeyError:
+                    pass
 
-                    try:
-                        app.setEntry(key+filepath,worker_entries[key]['/V'])
-                    except TypeError:
-                        pass
-                    except KeyError:
-                        pass
-                    # app.addScrolledTextArea(key+f,i,4)
-
-                    i+=1
-
-def addOut(filepath):
-    pass
 
 def removeInput():
     selected_form = app.getListBox('inputs')
@@ -187,7 +242,6 @@ def removeInput():
 def removeOutputTemplate():
     app.deleteTabbedFrameTab('out_templates',app.getTabbedFrameSelectedTab('out_templates'))
 
-
 def saveFormTemplate():
     global template_form
     global template_fields
@@ -200,24 +254,7 @@ def saveFormTemplate():
 
     writer_copy.write(open(template_form_path.strip('.pdf') + '_copy_TEST.pdf','wb'))
 
-
-def updateInputTabSelect():
-    if app.getListBox('inputs')!= None:
-        selected_form = app.getListBox('inputs')[0]
-        selected_tab = app.getTabbedFrameSelectedTab('inputs')
-        if selected_tab != selected_form:
-            app.setTabbedFrameSelectedTab('inputs', selected_form)
-
-
-
-def updateFormPathSelect():
-    selected_form = app.getListBox('inputs')[0]
-    selected_tab = app.getTabbedFrameSelectedTab('inputs')
-    if not selected_tab == selected_form:
-        app.selectListItem('inputs',selected_tab)
-
 selected_form_template_entry = None
-
 
 def updateFormTemplateEdit():
     app.setEntry('form_entry_edit',app.getListBox(app.getTabbedFrameSelectedTab('form_templates'))[0])
@@ -242,8 +279,8 @@ def saveForm():
     pass
 
 def generateOutput():
-    sel_inpath = app.getListBox('inputs')
-    input_name = app.getTabbedFrameSelectedTab('inputs').title()
+    sel_inpath = app.getListBox('inputs')[0]
+    input_name = sel_inpath.split('/')[-1].replace('.pdf','')
     rulesheet = app.getTabbedFrameSelectedTab('rulesheets')
     rulesheet_name = rulesheet.split('/')[-1].replace('.txt','')
     out_template = app.getTabbedFrameSelectedTab('out_templates')
@@ -254,18 +291,31 @@ def generateOutput():
         for r in p.runs:
             plaintxt_out += r.text
         plaintxt_out+='\n'
-    print(plaintxt_out)
 
     app.openTabbedFrame('output_preview')
-    output_name = input_name+'_'+rulesheet_name+'_'+out_template_name+'.docx'
-    output_path = output_dirpath+output_name
+    output_name = input_name+'_'+out_template_name+'.docx'
+    output_path = output_dirpath+'/'+output_name
+
+    ins2outs[sel_inpath]+=[output_path]
+    outs2ins[output_path] = sel_inpath
+
     with app.tab(output_path):
         app.setTabText('output_preview', output_path, output_name)
         app.addScrolledTextArea(output_path)
-        app.setTextArea(output_path, plaintxt_out)
+    app.addListItem('outputs', output_path)
+    compiled_rules = compileRules()
+    for rule in compiled_rules:
+        for replacee in rule.replacees:
+            print('replacee: '+replacee)
+            print('replacement: '+rule.replacement)
+            plaintxt_out = plaintxt_out.replace(replacee, rule.replacement)
+    app.setTextArea(output_path, plaintxt_out)
+
 
 def updateRuleeditEntry():
-    app.setEntry('rule_edit',app.getListBox(app.getTabbedFrameSelectedTab('rulesheets')+'_rules')[0])
+    rules = app.getListBox(app.getTabbedFrameSelectedTab('rulesheets')+'_rules')
+    if rules:
+        app.setEntry('rule_edit',rules[0])
 
 def addInTemplatesDrop(dropdata):
     data = parseDropDate(dropdata)
@@ -283,7 +333,7 @@ def addInTemplate(filepath):
     with app.tab(template_name):
         app.setStretch('both')
 
-        app.addListBox(template_name,template_form.getFields(),0,0,10,10)
+        app.addListBox(template_name,sorted(template_form.getFields()),0,0,10,10)
         app.setListBoxGroup(template_name)
         app.setListBoxChangeFunction(template_name,updateFormTemplateEdit)
 
@@ -307,23 +357,53 @@ def addOutTemplate(f):
     with app.tab(f):
         app.setTabText('out_templates',f,template_name)
         # app.addListBox(template_name + '_boxes',boxes,0,2)
-        app.addListBox(f ,None,0,1,10,10)
-        app.setListBoxGroup(f)
-        app.setListBoxChangeFunction(f,updateRuleeditEntry)
-        outfields = getDocFields(f)
-        for outfield in outfields:
-            if outfield not in app.getAllListItems(f):
-                app.addListItem(f, outfield)
+        out_temp_listbox = app.addListBox(f ,None,0,1,10,10)
+    app.setListBoxGroup(f)
+    app.setListBoxChangeFunction(f,updateRuleeditEntry)
+    outfields = getDocFields(f)
+    outfields = [s.upper().strip(' ') for s in sorted(outfields)]
+    for outfield in outfields:
+        if outfield not in app.getAllListItems(f):
+            app.addListItem(f, outfield)
+    app.getListBoxWidget(f).bind("<Double-Button-1>", updateRuleFromOutfield)
 
-        # add empty rules for unaccounted-for outfields
-        rule_outfields = []
-        sel_rulesheet = app.getTabbedFrameSelectedTab('rulesheets')
-        for rule in app.getAllListItems(sel_rulesheet+'_rules'):
-            rule_outfields += box_ptrn.findall(rule.split('] replaced by [')[0])
-        for outfield in app.getAllListItems(f):
-            if outfield not in rule_outfields:
-                app.addListItem(sel_rulesheet+'_rules', outfield +' replaced by []')
+    # add empty rules for unaccounted-for outfields
+    replacee_lists = []
+    sel_rulesheet = app.getTabbedFrameSelectedTab('rulesheets')
+    if sel_rulesheet == None:
+        path = rulesheet_dirpath+'/'+'New Rules.txt'
+        new_rulesheet = open(path, 'wb')
+        new_rulesheet.close()
+        addRulesheet(path)
+    sel_rulesheet = app.getTabbedFrameSelectedTab('rulesheets')
+    rules_listbox = sel_rulesheet+'_rules'
+    rules = app.getAllListItems(rules_listbox)
+    # TODO:
+    for rule in rules:
+         replacee_lists += box_ptrn.findall(rule.split('[ replaced by [')[0])
 
+    outfields = app.getAllListItems(f)
+    for outfield in outfields:
+        in_rule = False
+        for replacee_list in replacee_lists:
+            if outfield in replacee_list:
+                in_rule=True
+        if not in_rule:
+            rules+= [outfield +' replaced by {}']
+    rules = sorted(rules)
+    app.clearListBox(rules_listbox)
+    app.addListItems(rules_listbox, rules)
+
+def updateRuleFromOutfield(dblclick):
+    rules_listbox = app.getTabbedFrameSelectedTab('rulesheets')+'_rules'
+    out_temp_path = app.getTabbedFrameSelectedTab('out_templates')
+    outfield = app.getListBox(out_temp_path)[0]
+    # TODO: limit to rule-outfields using parser
+    for rule in app.getAllListItems(rules_listbox):
+        print(outfield + rule)
+        if outfield in rule:
+            app.selectListItem(rules_listbox, rule)
+            break
 
 def getDocFields(docpath):
     # Returns a list of fields to be replaced in a text-based document, where
@@ -353,18 +433,18 @@ def updateRules():
 
 def addCondition():
     rule = app.getEntry('rule_edit')
-    if '], when ' in rule:
-        subrule = re.search('\], when (\[.*?\] .+? \[.*?\], )+or \[.*?\] .+? \[.*?\]|\], when (\[.*?\] .+? \[.*?\])',rule).group(0)
+    if '] when ' in rule:
+        subrule = re.search('\] when (\[.*?\] .+? \[.*?\], )+or \[.*?\] .+? \[.*?\]|\] when (\[.*?\] .+? \[.*?\])',rule).group(0)
         new_sub = subrule.replace('], or [','], [') + ', or [] == []'
         new_rule = rule.replace(subrule, new_sub)
     else:
-        new_rule = rule + ', when [] == []'
+        new_rule = rule + ' when [] == []'
     app.setEntry('rule_edit', new_rule)
 
 def addReplacee():
     rule = app.getEntry(rule_edit)
     p = rule.find(' replaced by')
-    app.setEntry(rule_edit, rule[:p]+', []')
+    app.setEntry(rule_edit, rule[:p]+', {}')
 
 def addReplacement():
     rule = app.getEntry('rule_edit')
@@ -377,36 +457,37 @@ def addReplacement():
 
 def pasteEntry2Rule():
     src_entry, trg_entry = 'form_entry_edit','rule_edit'
-    app.setEntry(trg_entry,
     # Replaces the first empty box in the rule with the selected form template field.
-    re.split('(\[\])',app.getEntry(trg_entry),1)[0] + '['+app.getEntry(src_entry)
-                            +']'+re.split('\[\]',app.getEntry(trg_entry),1)[1])
+    app.setEntry(trg_entry,
+    re.split('(\{ *\})',app.getEntry(trg_entry),1)[0] + '{'+app.getEntry(src_entry)
+                            +'}'+re.split('\{ *\}',app.getEntry(trg_entry),1)[1])
     updateRules()
 
 def delEntryFromRule():
     trg = 'rule_edit'
-    app.setEntry(trg, re.sub('\][^\[]+?\[ ', '][ ',app.getEntry(trg)[::-1],1)[::-1])
+    app.setEntry(trg, re.sub('\}.+?\{ ', '}{ ',app.getEntry(trg)[::-1],1)[::-1])
     updateRules()
 
 def saveRulesheet():
     rulesheet = app.getTabbedFrameSelectedTab('rulesheets')
-    with open(dir_path+'/Rules/'+rulesheet+".txt", "w") as text_file:
+    with open(rulesheet, "wb") as text_file:
         txt= ''
         for t in app.getAllListItems(rulesheet+'_rules'):
-            txt += '\n'+t
-        text_file.write(txt)
+            txt += t +'\n'
+        text_file.write(txt.strip('\n').encode('utf8'))
 
-def paste_outfield():
+def pasteOutfield():
     rule = app.getEntry('rule_edit')
-    subrule  = rule.split('] replaced by [')[0] +']'
+    subrule  = rule.split('] replaced by {')[0] +']'
     outfield = app.getListBox(app.getTabbedFrameSelectedTab('out_templates'))[0]
-    if ('], or [' in subrule) or ('] or [' in subrule):
-        new_sub = subrule.replace('], or [', '], [').replace('] or [', '], [')
-        new_sub = new_sub +', or ' + outfield
+    if ('], and [' in subrule) or ('] and [' in subrule):
+        new_sub = subrule.replace('], and [', '], [').replace('] and [', '], [')
+        new_sub = new_sub +', and ' + outfield
     else:
-        new_sub = subrule + ' or ' + outfield
+        new_sub = subrule + ' and ' + outfield
     new_rule = rule.replace(subrule, new_sub)
     app.setEntry('rule_edit', new_rule)
+    updateRules()
 
 def addRulesheetsDrop(dropdata):
     data = parseDropDate(dropdata)
@@ -417,66 +498,152 @@ def addRulesheetsDrop(dropdata):
         addRulesheet(f)
 
 def addRulesheet(path):
-    rules = open(path,'rb').readlines()
+    rules = [rule for rule in open(path,'rb').readlines()]
+    rules=sorted(rules)
     sheetname = path.split('/')[-1].replace('.txt','')
     app.openTabbedFrame('rulesheets')
     with app.tab(path):
         app.setTabText('rulesheets',path, sheetname)
-        app.addListBox(path+'_rules', rules, 0,0)
+        app.addListBox(path+'_rules', [], 0,0,10,10)
+        for rule in rules:
+            app.addListItem(path+'_rules',rule)
         app.setListBoxGroup(path+'_rules')
         app.setListBoxChangeFunction(path+'_rules',updateRuleeditEntry)
 
+def deleteRule():
+    sheetpath = app.getTabbedFrameSelectedTab('rulesheets')
+    app.removeListItem(sheetpath+'_rules',app.getListBox(sheetpath+'_rules'))
+
+def updateInputTabSelect():
+    if app.getListBox('inputs')!= None:
+        selected_form = app.getListBox('inputs')[0]
+        selected_tab = app.getTabbedFrameSelectedTab('inputs')
+        if selected_tab != selected_form:
+            app.setTabbedFrameSelectedTab('inputs', selected_form)
+            updateOutpathFromInpath()
+
+# Catches loop
+def updateFormPathSelect():
+    selected_form = app.getListBox('inputs')[0]
+    selected_tab = app.getTabbedFrameSelectedTab('inputs')
+    if not selected_tab == selected_form:
+        app.selectListItem('inputs',selected_tab)
+
+def updateOutPreviewFromOutpath():
+    paths = app.getListBox('outputs')
+    if app.getTabbedFrameSelectedTab('output_preview') not in paths:
+        app.setTabbedFrameSelectedTab('output_preview', paths[0])
+
+# catches loop
+def updateOutpathFromPreview():
+    outpath = app.getTabbedFrameSelectedTab('output_preview')
+
+    if outpath not in app.getListBox('outputs'):
+        app.selectListItem('outputs',outpath)
+
+
+def updateOutpathFromInpath():
+    inpath = app.getListBox('inputs')[0]
+    for outpath in ins2outs[inpath]:
+        if outpath not in app.getListBox('outputs'):
+            app.selectListItem('outputs',outpath)
+
+def updateInpathFromOutpath():
+    outpath = app.getListBox('outputs')[0]
+    inpath = outs2ins[outpath]
+    if app.getListBox('inputs')[0] != inpath:
+        app.selectListItem('inputs', inpath)
+
 with gui("OPC form2doc") as app:
-    app.setStretch('both')
-    app.addListBox('inputs',[],1,0,1,31)
-    app.setListBoxChangeFunction('inputs', updateInputTabSelect)
-    with app.tabbedFrame('inputs',1,1,1,31):
-        app.setListBoxDropTarget('inputs', addInDrop, replace=False)
-        app.setTabbedFrameChangeFunction('inputs',updateFormPathSelect)
+    with app.panedFrameVertical('inputs'):
+        with app.panedFrame('input_paths'):
+            app.setStretch('column')
+            app.addLabel('Inputs', 'Inputs',0,0,1,1)
+            app.addButton('Remove Input',removeInput,32,0)
+            app.setButtonTooltip('Remove Input', 'Does not delete input form from hard drive.')
 
-    app.addListBox('outputs',[],1,2,1,31)
-    with app.tabbedFrame('output_preview',1,3):
-        pass
-    app.setStretch('column')
-    app.addLabel('Input Preview', 'Input Preview', 0,1)
-    app.addLabel('Inputs', 'Inputs',0,0,1,1)
-    app.addButton('Remove Input',removeInput,32,0)
-    app.setButtonTooltip('Remove Input', 'Does not delete input form from hard drive.')
-    app.addButton('Save Form',saveFormedit,32,1)
+            app.setStretch('both')
+            app.addListBox('inputs',[],1,0,1,31)
+            app.setListBoxGroup('inputs')
+            app.setListBoxChangeFunction('inputs', updateInputTabSelect)
 
-    app.addLabel('Outputs','Outputs',0,2)
-    app.addButton('Generate Output',generateOutput,32,2)
+            app.startPanedFrame('input_tabs')
+            app.setStretch('column')
+            app.addLabel('Input Preview', 'Input Preview', 0,1)
+            app.addButton('Save Form',saveFormedit,32,1)
+            app.setStretch('both')
+            with app.tabbedFrame('inputs',1,1,1,31):
+                app.setListBoxDropTarget('inputs', addInDrop, replace=False)
+                app.setTabbedFrameChangeFunction('inputs',updateFormPathSelect)
+            app.stopPanedFrame()
+            app.startPanedFrame('output_paths')
+            app.setStretch('column')
+            app.addLabel('Outputs','Outputs',0,2)
+            app.addButton('Generate Output',generateOutput,32,2)
+            app.setStretch('both')
+            app.addListBox('outputs',[],1,2,1,31)
+            app.setListBoxGroup('outputs')
+            app.setListBoxMulti('outputs')
+            app.setListBoxChangeFunction('outputs', updateOutPreviewFromOutpath)
+            app.stopPanedFrame()
+            app.startPanedFrame('output_previews')
+            app.setStretch('column')
+            app.addLabel('Output Preview','Output Preview',0,3)
+            app.addButton('Save Output',None,32,3)
+            app.setStretch('both')
+            with app.tabbedFrame('output_preview',1,3):
+                app.setTabbedFrameChangeFunction('output_preview', updateOutpathFromPreview)
+            app.stopPanedFrame()
 
-    app.addHorizontalSeparator(33,0,4)
-    app.addLabel('out_templates','Output Templates',34,3)
-    app.addLabel('Output Preview','Output Preview',0,3)
-    app.addButton('Save Output',None,32,3)
-    app.setStretch('both')
-    with app.tabbedFrame('rulesheets',35,1,2,30):
-        app.setTabbedFrameDropTarget('rulesheets', addRulesheetsDrop)
+        with app.panedFrame('templates'):
+            app.startPanedFrame('in_temps')
+            app.setStretch('both')
+            with app.tabbedFrame('form_templates',35,0,1,30):
+                app.setTabbedFrameDropTarget('form_templates', addInTemplatesDrop)
+            app.setStretch('column')
+            app.addLabel('Form Template','Input Templates',34,0)
+
+            app.addButton('>',pasteEntry2Rule,67,0)
+            app.addButton('Save to Form Template', saveFormTemplate,68,0)
+            app.addEntry('form_entry_edit',66,0)
+
+            app.closePanedFrame()
+
+            app.startPanedFrame('rulesheets')
+            app.setStretch('column')
+            app.addLabel('Rule Sheets','Rule Sheets',34,1,2,1)
+
+            app.addButton('Add Replacement',addReplacement,68,1)
+            app.addButton('Save Rule Sheet',saveRulesheet,69,2)
+            app.addButton('Delete Rule', deleteRule,69,1)
+            app.addEntry('rule_edit',66,1,2,1)
+            app.setEntrySubmitFunction('rule_edit',updateRules)
+            app.addButton('delete last',delEntryFromRule,67,1)
+            app.addButton('Add Condition',addCondition,68,2)
+
+            app.setStretch('both')
+            with app.tabbedFrame('rulesheets',35,1,2,30):
+                app.setTabbedFrameDropTarget('rulesheets', addRulesheetsDrop)
+
+            app.closePanedFrame()
+
+            app.startPanedFrame('out_temps')
+            app.setStretch('column')
+            app.addLabel('out_templates','Output Templates',34,3)
+            app.addButton('<', pasteOutfield,66,3)
+
+            app.setStretch('both')
+            with app.tabbedFrame('out_templates',35,3,10,10):
+                app.setTabbedFrameDropTarget('out_templates', addOutTemplatesDrop)
 
 
-    with app.tabbedFrame('out_templates',35,3):
-        app.setTabbedFrameDropTarget('out_templates', addOutTemplatesDrop)
-    app.setStretch('column')
-    app.addEntry('rule_edit',66,1,2,1)
-    app.setEntrySubmitFunction('rule_edit',updateRules)
-    app.addButton('delete last',delEntryFromRule,67,1)
-    app.addButton('Add Condition',addCondition,68,2)
-    app.addButton('Add Replacement',addReplacement,68,1)
-    app.addButton('Save Rule Sheet',saveRulesheet,69,2)
+            app.closePanedFrame()
 
-    app.addButton('Remove Output Template',removeOutputTemplate,69,3)
-    app.setButtonTooltip('Remove Output Template','Does not delete output template from hard drive.')
-    app.addLabel('Form Template','Input Templates',34,0)
-    app.addLabel('Rule Sheets','Rule Sheets',34,1,2,1)
-    app.addEntry('form_entry_edit',66,0)
-    app.addButton('>',pasteEntry2Rule,67,0)
-    app.addButton('Save to Form Template', saveFormTemplate,68,0)
-    app.addButton('<',paste_outfield,66,3)
-    app.setStretch('both')
-    with app.tabbedFrame('form_templates',35,0,1,30):
-        app.setTabbedFrameDropTarget('form_templates', addInTemplatesDrop)
+            app.addButton('Remove Output Template',removeOutputTemplate,69,3)
+            app.setButtonTooltip('Remove Output Template','Does not delete output template from hard drive.')
+
+
+
 
     # Loading default templates and rules
     for path in os.listdir(rulesheet_dirpath):
@@ -493,10 +660,9 @@ with gui("OPC form2doc") as app:
         if path.endswith('.pdf'):
             addIn(input_dirpath+'/'+path)
 
-
     # app.setEntrySubmitFunction('form_entry_edit',updateFormTemplates)
 
-
+    generateOutput()
 
 
 app.setFont(15)
