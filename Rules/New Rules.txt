@@ -1,0 +1,45 @@
+[AGENCY OR CLIENT], [AGENCY], and [CLIENT] replaced by {JOB NAMECOMPANY}
+
+[BUDGET] replaced by budgetFromSalary{EXPECTED TOTAL WAGES FOR THIS JOB}
+
+[CITY] replaced by {IMMIGRATION PROCESSING AT}
+
+[DAYS IN CANADA] replaced by insideDayCount{DATE OF ARRIVAL DEPARTURE}
+
+[DESCRIPTION OF CLIENT’S BUSINESS] replaced by {JOB NAMECOMPANY}
+
+[END DATE] replaced by endDate{DATE OF JOB SHOOTING}
+
+[FOREIGN PRODUCTION COMPANY] replaced by {JOB NAMECOMPANY}
+
+[HER/HIS] replaced by possessivePronoun{SEX}
+
+[JOB NAME] replaced by {}
+
+[JOB] and [NAME OF JOB] replaced by first{JOB NAMECOMPANY}
+
+[LOCATION] replaced by {IMMIGRATION PROCESSING AT}
+
+[NAME OF JOB] replaced by second{POSITION  JOB TITLE}
+
+[NAME, TITLE] replaced by {FULL NAME AS APPEARS ON PASSPORT}, first{POSITION  JOB TITLE}
+
+[NAME], [NAME HERE], and [VISITOR NAME] replaced by {FULL NAME AS APPEARS ON PASSPORT}
+
+[NATIONALITY] replaced by {CITIZENSHIP}
+
+[POSITION] replaced by first{POSITION  JOB TITLE}
+
+[PRODUCER] replaced by second{JOB NAMECOMPANY}
+
+[PRODUCTION DATES] replaced by insideDates{DATE OF JOB SHOOTING}
+
+[PRODUCTION] replaced by first{JOB NAMECOMPANY}
+
+[R186(A)] not replaced
+
+[SHE/HE] replaced by pronoun{SEX}
+
+[SHOOT DATES] replaced by insideDates{DATE OF JOB SHOOTING}
+
+[START DATE] replaced by startDate{DATE OF JOB SHOOTING}

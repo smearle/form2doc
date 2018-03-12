@@ -1,0 +1,137 @@
+[AGENCY OR CLIENT] replaced by []
+
+[BUDGET] replaced by []
+
+[CITY] replaced by []
+
+[CLIENT], [AGENCY OR CLIENT], and [AGENCY] replaced by []
+
+[DAYS IN CANADA] replaced by []
+[DAYS IN CANADA] replaced by []
+
+[DAYS IN CANADA] replaced by []
+
+[DAYS IN CANADA] replaced by [insideDates([DATE OF ARRIVAL DEPARTURE])]
+
+[DESCRIPTION OF CLIENT’S BUSINESS] replaced by []
+[DESCRIPTION OF CLIENT’S BUSINESS] replaced by []
+
+[DESCRIPTION OF CLIENT’S BUSINESS] replaced by []
+
+[END DATE] replaced by []
+[END DATE] replaced by []
+
+[END DATE] replaced by []
+
+[END DATE] replaced by []
+
+[FOREIGN PRODUCTION COMPANY] replaced by [JOB NAMECOMPANY]
+
+[FOREIGN PRODUCTION COMPANY] replaced by []
+[FOREIGN PRODUCTION COMPANY] replaced by []
+
+[FOREIGN PRODUCTION COMPANY] replaced by []
+
+[HER/HIS] replaced by [HER] when [SEX] == [FEMALE], replaced by [HIS], when [SEX] == [MALE], replaced by [THEIR] when [SEX] == [OTHER]
+
+[HER/HIS] replaced by []
+[HER/HIS] replaced by []
+
+[HER/HIS] replaced by []
+
+[JOB NAME] replaced by []
+[JOB NAME] replaced by []
+
+[JOB NAME] replaced by []
+
+[JOB] replaced by []
+[JOB] replaced by []
+
+[JOB] replaced by []
+
+[Job], [NAME OF JOB], and [Job Name] replaced by [first([JOB NAMECOMPANY])]
+
+[LOCATION] replaced by []
+[LOCATION] replaced by []
+
+[LOCATION] replaced by []
+
+[NAME HERE], [NAME], and [VISITOR NAME] replaced by [Name]
+
+[NAME, TITLE] replaced by []
+[NAME, TITLE] replaced by []
+
+[NAME, TITLE] replaced by []
+
+[NATIONALITY] replaced by [CITIZENSHIP]
+
+[NATIONALITY] replaced by []
+[NATIONALITY] replaced by []
+
+[NATIONALITY] replaced by []
+
+[Name, Title] replaced by [[Name], first([POSITION  JOB TITLE])]
+
+[POSITION] replaced by []
+[POSITION] replaced by []
+
+[POSITION] replaced by []
+
+[POSITION] replaced by []
+
+[PRODUCER] replaced by []
+[PRODUCER] replaced by []
+
+[PRODUCER] replaced by []
+
+[PRODUCTION DATES] replaced by []
+[PRODUCTION DATES] replaced by []
+[PRODUCTION DATES] replaced by []
+
+[PRODUCTION] replaced by []
+[PRODUCTION] replaced by []
+
+[PRODUCTION] replaced by []
+
+[PRODUCTION] replaced by []
+
+[Producer] replaced by []
+
+[R186(A)] replaced by []
+[R186(A)] replaced by []
+
+[R186(A)] replaced by []
+
+[R186(a)] not replaced
+
+[SHE/HE] replaced by [SHE] when [SEX] == [FEMALE], replaced by [HE], when [SEX] == [MALE], replaced by [THEY] when [SEX] == [OTHER]
+
+[SHE/HE] replaced by []
+[SHE/HE] replaced by []
+
+[SHE/HE] replaced by []
+
+[SHOOT DATES] replaced by []
+[SHOOT DATES] replaced by []
+
+[SHOOT DATES] replaced by []
+
+[START DATE] replaced by []
+[START DATE] replaced by []
+
+[START DATE] replaced by []
+
+[START DATE] replaced by []
+
+[Shoot dates] replaced by []
+
+[VISITOR NAME] replaced by []
+[VISITOR NAME] replaced by []
+
+[VISITOR NAME] replaced by []
+
+[description of client’s business] replaced by []
+
+[location] replaced by []
+
+[production dates] replaced by []
