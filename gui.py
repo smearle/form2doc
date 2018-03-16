@@ -2,6 +2,7 @@ from appJar import gui
 import appJar
 from PyPDF2 import PdfFileWriter, PdfFileReader
 from docx import Document
+import docx
 import os
 import re
 import inspect
@@ -10,8 +11,15 @@ import ruleFunctions
 from form2doc import form2doc
 from ruleFunctions import RuleParseError
 
+
+
 class MissingFieldError(Exception):
     pass
+
+out_temp_paths = []
+
+# A dictionary of filepaths to liveDoc objects.
+outdocs = {}
 
 ins2outs = {}
 outs2ins = {}
@@ -50,12 +58,18 @@ def compileRules():
     for rule in rules:
         if rule.replace(' ','') == '':
             rules.delete(rule)
-    compiled_rules = [Rule(rulestr) for rulestr in rules]
+
+    input_path = app.getTabbedFrameSelectedTab('inputs')
+
+    rule_parser = ruleFunctions.RuleParser(formpaths_to_fielddicts[input_path])
+
+    compiled_rules = [Rule(rule_parser, rulestr) for rulestr in rules]
     return compiled_rules
 
 
 class Rule(object):
-    def __init__(self, rule):
+    def __init__(self, rule_parser, rule):
+        input_path = app.getTabbedFrameSelectedTab('inputs')
         r_pos = []
         c_pos = []
         op = 0
@@ -80,41 +94,31 @@ class Rule(object):
         self.replacement = replacement_str
         infields = [replacement[1].strip('{}') for replacement in  self.replace_codes]
         funcs = [replacement[0] for replacement in  self.replace_codes]
-        print('infields: %s'%infields)
-        print('funcs %s' % funcs)
         for i in range(len( self.replace_codes)):
             func = funcs[i]
             infield = infields[i]
             if func !=None:
-                function = func
+                is_valid = False
 
-                for ruleFunc in inspect.getmembers(ruleFunctions, inspect.isfunction):
+                for ruleFunc in inspect.getmembers(rule_parser, inspect.ismethod):
                     if func == ruleFunc[0]:
+                        is_valid = True
                         argument = infield
                         try:
-                            argument = app.getEntry(argument+'_'+app.getTabbedFrameSelectedTab('inputs'))
-                        except:
-                            print('No input field: %s' % infield)
-                            subreplace = 'Error'
-                        try:
-                            subreplace = getattr(ruleFunctions, func)(argument)
+                            argument = app.getEntry(argument+'_'+input_path)
+                            subreplace = getattr(rule_parser, func)(argument)
                         except RuleParseError:
                             print(RuleParseError)
                             subreplace = 'Error'
                         break
-                    else:
-                        try:
-                            subreplace = app.getEntry(infield+'_'+app.getTabbedFrameSelectedTab('inputs'))
-                        except:
-                            print('No input field: %s' % infield)
-                            subreplace = 'Error'
+                if not is_valid:
+                    try:
+                        subreplace = app.getEntry(infield+'_'+input_path)
+                    except:
+                        subreplace = 'Error'
             else:
-                function = ''
-                subreplace = app.getEntry(infield+'_'+app.getTabbedFrameSelectedTab('inputs'))
-            print(function)
-            print(infield)
-            print(subreplace)
-            self.replacement = self.replacement.replace(function+'{'+infield+'}', subreplace)
+                subreplace = app.getEntry(infield+'_'+input_path)
+            self.replacement = self.replacement.replace(func + '{'+infield+'}', subreplace)
         print('replacements: %s' %  self.replacement)
 
 
@@ -127,10 +131,10 @@ def saveFormedit():
         fields[k]= app.getEntry(k+f)
         # fields0[k]=''
     outform = PdfFileWriter()
-    original_form = PdfFileReader(file(f,'rb'))
-    outStream = file('testout.pdf', 'wb')
+    original_form = PdfFileReader(open(f,'rb'))
+    outStream = open('testout.pdf', 'wb')
     # outform.write(outStream)
-    # OUTTEST = file('supertesty.pdf','wb')
+    # OUTTEST = open('supertesty.pdf','wb')
     # outform.write(OUTTEST)
     # OUTTEST.close()
 
@@ -146,8 +150,46 @@ def saveFormedit():
 
     outStream.close()
 
-def addRule( ):
-    pass
+def saveOutput():
+    outpath = app.getTabbedFrameSelectedTab('output_preview')
+    outdocs[outpath].save(outpath)
+
+    # out_temp_path = app.getTabbedFrameSelectedTab('out_templates')
+    # template = Document(open(out_temp_path))
+    # out_path = app.getTabbedFrameSelectedTab('output_preview')
+    # outtext = app.getTextArea('output_preview')
+    # p = 0
+    # r = 0
+    # i = 0
+    # char = ''
+    #
+    # #
+    #
+    # for i in range(len(outtext)):
+    #     par = doc.paragraphs[p]
+    #     run = par.runs[r]
+    #     if i - prev in range(len(run.text)):
+    #         char = run.text[i-prev]
+    #     else:
+    #         # go to next run
+    #         prev += len(run.text)
+    #         r += 1
+    #         if r in len(par.runs):
+    #             run = par.runs[r]
+    #             char = run[i-prev]
+    #         # or next paragraph
+    #         else:
+    #             p += 1
+    #             r = 0
+    #             par = doc.paragraphs[p]
+    #             run = par.runs[r]
+    #
+    #
+    #     if p in range(len(doc.paragraphs)):
+    #         pass
+    #     else:
+    #         pass
+
 
 def getFiles(filedir, extension):
     i=0
@@ -194,38 +236,38 @@ def addIn(filepath):
     if filepath not in app.getAllListItems('inputs'):
         app.addListItem('inputs', filepath)
         # worker_entries = get_forms(f, inputs_to_form_entries)
-        worker_entries= PdfFileReader(file(filepath,'rb')).getFields()
-        formpaths_to_formdicts[filepath] = worker_entries
-        fields = {}
-        for k in worker_entries.keys():
-            fields[k]= worker_entries[k]['/V']
-        formpaths_to_fielddicts[filepath] = fields
-        try:
-            fullname = worker_entries['Name']['/V']
-        except KeyError:
-            fullname = filepath.split('/')[-1]
-        except TypeError:
-            fullname = filepath.split('/')[-1]
+        with open(filepath,'rb') as infile:
+            worker_entries= PdfFileReader(infile).getFields()
+            formpaths_to_formdicts[filepath] = worker_entries
+            fields = {}
+            for k in worker_entries.keys():
+                fields[k]= worker_entries[k]['/V']
+            formpaths_to_fielddicts[filepath] = fields
+            try:
+                fullname = fields['FIRST NAME'] + fields['LAST NAME']
+            except KeyError:
+                fullname = filepath.split('/')[-1]
+            except TypeError:
+                fullname = filepath.split('/')[-1]
 
-        app.setStretch('both')
-        with app.tab(filepath):
-            app.setTabText('inputs',filepath,fullname)
-            with app.scrollPane('Worker Form Edit' + filepath):
-                infields =sorted([key.strip(' ') for key in worker_entries.keys()])
+            app.setStretch('both')
+            with app.tab(filepath):
+                app.setTabText('inputs',filepath,fullname)
+                with app.scrollPane('Worker Form Edit' + filepath):
+                    infields =sorted([key.strip(' ') for key in worker_entries.keys()])
 
-                num_infields = range(len(infields))
-                app.setSticky('e')
-                [app.addLabel(infields[i] +'_' + filepath,infields[i][:25],i,2,0) for i in num_infields]
-                [app.setLabelTooltip(infields[i]+'_'+filepath,infields[i]) for i in num_infields]
-                app.setSticky('w')
-                print([infields[i]+'_'+filepath for i in num_infields])
-                [app.addEntry(infields[i]+'_'+filepath,i,3,1,0)for i in num_infields]
-                try:
-                    [app.setEntry(infields[i]+'_'+filepath,worker_entries[infields[i]]['/V']) for i in num_infields]
-                except TypeError:
-                    pass
-                except KeyError:
-                    pass
+                    num_infields = range(len(infields))
+                    app.setSticky('e')
+                    [app.addLabel(infields[i] +'_' + filepath,infields[i][:25],i,2,0) for i in num_infields]
+                    [app.setLabelTooltip(infields[i]+'_'+filepath,infields[i]) for i in num_infields]
+                    app.setSticky('w')
+                    [app.addEntry(infields[i]+'_'+filepath,i,3,1,0)for i in num_infields]
+                    try:
+                        [app.setEntry(infields[i]+'_'+filepath,worker_entries[infields[i]]['/V']) for i in num_infields]
+                    except TypeError:
+                        pass
+                    except KeyError:
+                        pass
 
 
 def removeInput():
@@ -252,7 +294,8 @@ def saveFormTemplate():
         page = writer_copy.getPage(p)
         writer_copy.updatePageFormFieldValues(page, template_fields)
 
-    writer_copy.write(open(template_form_path.strip('.pdf') + '_copy_TEST.pdf','wb'))
+    with open(template_form_path.strip('.pdf') + '_copy_TEST.pdf','wb') as TEST:
+        writer_copy.write(TEST)
 
 selected_form_template_entry = None
 
@@ -275,42 +318,166 @@ def updateFormTemplates():
         template_fields[entry] = formbox
         app.setListItemAtPos('form_templates',selected_form_template_entry,entry)
 
-def saveForm():
-    pass
-
 def generateOutput():
     sel_inpath = app.getListBox('inputs')[0]
+
     input_name = sel_inpath.split('/')[-1].replace('.pdf','')
     rulesheet = app.getTabbedFrameSelectedTab('rulesheets')
     rulesheet_name = rulesheet.split('/')[-1].replace('.txt','')
     out_template = app.getTabbedFrameSelectedTab('out_templates')
     out_template_name = out_template.split('/')[-1].replace('.docx','')
-    plaintxt_out = ''
-    doc = Document(open(out_template, 'rb'))
-    for p in doc.paragraphs:
-        for r in p.runs:
-            plaintxt_out += r.text
-        plaintxt_out+='\n'
-
-    app.openTabbedFrame('output_preview')
     output_name = input_name+'_'+out_template_name+'.docx'
-    output_path = output_dirpath+'/'+output_name
+    outpath = output_dirpath+'/'+output_name
 
-    ins2outs[sel_inpath]+=[output_path]
-    outs2ins[output_path] = sel_inpath
+    indoc = Document(out_template)
+    indoc.save(outpath)
+    app.openTabbedFrame('output_preview')
 
-    with app.tab(output_path):
-        app.setTabText('output_preview', output_path, output_name)
-        app.addScrolledTextArea(output_path)
-    app.addListItem('outputs', output_path)
-    compiled_rules = compileRules()
-    for rule in compiled_rules:
-        for replacee in rule.replacees:
-            print('replacee: '+replacee)
-            print('replacement: '+rule.replacement)
-            plaintxt_out = plaintxt_out.replace(replacee, rule.replacement)
-    app.setTextArea(output_path, plaintxt_out)
+    ins2outs[sel_inpath]+=[outpath]
+    outs2ins[outpath] = sel_inpath
 
+    # create or open output preview tab
+    with app.tab(outpath):
+        app.setTabText('output_preview', outpath, output_name)
+        # create output text-area, if it does not exist
+        try:
+            textwidget = app.getTextArea(outpath)
+        except appJar.appjar.ItemLookupError:
+            textwidget = app.addScrolledTextArea(outpath)
+            app.addListItem('outputs', outpath)
+
+    outdoc = liveDoc(outpath, textwidget)
+    outdocs[outpath] = outdoc
+    app.setTextArea(outpath,'\n'.join(outdoc.text).strip('\n'))
+
+    # compiled_rules = compileRules()
+    # for rule in compiled_rules:
+    #     for replacee in rule.replacees:
+    #         print('replacee: '+replacee)
+    #         print('replacement: '+rule.replacement)
+    #         replacement = rule.replacement
+    #         # find replacement positions
+    #         i = 0
+    #         while plaintxt_out[i:].upper().find(replacee.upper()) >=0:
+    #             # the position of the current replacee in the overall doc
+    #             j = i+ plaintxt_out[i:].upper().find(replacee.upper())
+    #             if plaintxt_out[j-2] == '.':
+    #                 replacement = replacement.capitalize()
+    #             elif plaintxt_out[j-4:j-1] == '(n)':
+    #                 r = replacement[0]
+    #                 if r == 'a' or r=='e' or r=='u' or r=='i' or r=='o':
+    #                     plaintxt_out = plaintxt_out[:j-4] + 'n' + plaintxt_out[j-1:]
+    #                     j -= 2
+    #
+    #                 else:
+    #                     plaintxt_out = plaintxt_out[:j-4] + plaintxt_out[j-1:]
+    #                     j -= 3
+    #             plaintxt_out = plaintxt_out[:j] + replacement + plaintxt_out[j+ len(replacee):]
+    #             i = j + len(replacement)
+    #
+    # app.setTextArea(outpath, plaintxt_out)
+    # indoc.save(outpath)
+
+
+class liveDoc(object):
+    def __init__(self, outpath, textwidget):
+        self.doc = Document(outpath)
+        self.outpath = outpath
+        self.text = ['','']
+        # A list the length of the document's plaintext, where each is a triple
+        # of positions (par,run, char)
+        # specifying the character's position in the docx object.
+        self.txtodocpos = [[], []]
+        # The tkinter text widget with which the doc is to be binded for live editing.
+        self.textwidget = textwidget
+
+        row = 1
+        i, j, k = 0, 0, 0
+        for p in self.doc.paragraphs:
+            for r in p.runs:
+                self.text[row] += r.text
+                for c in r.text:
+                    self.txtodocpos[row]  += [(i,j,k)]
+                    k += 1
+                    # if c == '\n':
+                    #     column =0
+                    #     row += 1
+                    #     self.txtodocpos[row] = []
+                k = 0
+                j += 1
+            j = 0
+            i+= 1
+            row += 1
+            self.text +=['']
+            self.txtodocpos += [[]]
+
+        print(self.txtodocpos)
+
+        def key(event):
+            ''' Add one character to document.
+            '''
+            print('bind: key')
+            print(event.char.encode('utf8'))
+            if event.char:
+                txpos = self.textwidget.index('insert').split('.')
+                row, col = int(txpos[0]),int(txpos[1])
+                print(row, col)
+                docpos0 = self.txtodocpos[row]
+                print(docpos0)
+                docpos = docpos0[col]
+                p, r, c = docpos[0],docpos[1],docpos[2]
+                currun = self.doc.paragraphs[p].runs[r]
+                currun.text = currun.text[:c] + event.char +currun.text[c+1:]
+                # insert new pos-list item
+                self.txtodocpos[row].insert(col,(p,r,c))
+                # adjust the char-pos of all positions left in the run
+                c += 1
+                ccol = col
+                while c < len(currun.text):
+                    self.txtodocpos[row][ccol] = (p,r,c)
+                self.text[row] = self.text[row][:col] + event.char + self.text[row][col+1:]
+
+        def backspace(event):
+            ''' For cutting, backspacing, deleting '''
+            txpos = self.textwidget.index('insert')
+            # we pop from the position list since we will be deleting at least
+            # one character
+            docpos = self.txtodocpos.pop(txpos)
+            p, r, c = docpos[0],docpos[1],docpos[2]
+            currun = self.paragraphs[p].runs[r]
+            try:
+                # deleting selection in text-widget
+                selection = event.widget.get('sel.first', 'sel.last')
+            except TclError:
+                # or else delete a single character
+                selection = self.text[txpos]
+            while c < len(selection):
+                self.text = self.text[:txpos] + self.text[txpos+1:]
+                currun.text = currun.text[:c] + currun.text[c+1:]
+                txpos += 1
+                docpos = self.txtodocpos.pop(txpos)
+                p, r, c = docpos[0],docpos[1],docpos[2]
+                currun = self.paragraphs[p].runs[r]
+
+        def paste(event):
+            ''' Pastes text on the clipboard into the cursor position.
+            '''
+            # TODO: Paste with style/formatting?
+            txpos = self.textwidget.index('insert')
+            docpos = self.txtodocpos[txpos]
+            p, r, c = docpos[0],docpos[1],docpos[2]
+            currun = self.paragraphs[p].runs[r]
+            pastetxt = app.clipboard_get()
+            self.text = self.text[:txpos] + pastetxt + self.text[txpos + len(pastetxt):]
+            currun.text = currun.text[c] + pastetxt + currun.text[c + len(pastetxt):]
+            self.txtodocpos = self.txtodocpos[:txpos] + [(p,r,c+i) for i in range(len(pastetxt))] + txtodocpos[txpos + len(pastetxt):]
+
+        textwidget.bind('<Key>', key)
+        textwidget.bind('<BackSpace>', backspace)
+        textwidget.bind('<Control-v>', paste)
+
+    def save(self, outpath):
+        return self.doc.save(outpath)
 
 def updateRuleeditEntry():
     rules = app.getListBox(app.getTabbedFrameSelectedTab('rulesheets')+'_rules')
@@ -329,13 +496,14 @@ def addInTemplatesDrop(dropdata):
 def addInTemplate(filepath):
     app.openTabbedFrame('form_templates')
     template_name = filepath.split('/')[-1].replace('.pdf','')
-    template_form = PdfFileReader(file(filepath,'rb'))
-    with app.tab(template_name):
-        app.setStretch('both')
+    with open(filepath,'rb') as intemp:
+        template_form = PdfFileReader(intemp)
+        with app.tab(template_name):
+            app.setStretch('both')
 
-        app.addListBox(template_name,sorted(template_form.getFields()),0,0,10,10)
-        app.setListBoxGroup(template_name)
-        app.setListBoxChangeFunction(template_name,updateFormTemplateEdit)
+            app.addListBox(template_name,sorted(template_form.getFields()),0,0,10,10)
+            app.setListBoxGroup(template_name)
+            app.setListBoxChangeFunction(template_name,updateFormTemplateEdit)
 
 
 
@@ -349,6 +517,8 @@ def addOutTemplatesDrop(dropdata):
 
 
 def addOutTemplate(f):
+    global out_temp_paths
+    out_temp_paths += [f]
     app.setStretch('both')
     app.openTabbedFrame('out_templates')
     # Assumes the name (not just path) of each template file is unique.
@@ -361,7 +531,7 @@ def addOutTemplate(f):
     app.setListBoxGroup(f)
     app.setListBoxChangeFunction(f,updateRuleeditEntry)
     outfields = getDocFields(f)
-    outfields = [s.upper().strip(' ') for s in sorted(outfields)]
+    outfields = [s.decode().upper().strip(' ') for s in sorted(outfields)]
     for outfield in outfields:
         if outfield not in app.getAllListItems(f):
             app.addListItem(f, outfield)
@@ -380,7 +550,7 @@ def addOutTemplate(f):
     rules = app.getAllListItems(rules_listbox)
     # TODO:
     for rule in rules:
-         replacee_lists += box_ptrn.findall(rule.split('[ replaced by [')[0])
+         replacee_lists += box_ptrn.findall(rule.decode().split('replaced by')[0])
 
     outfields = app.getAllListItems(f)
     for outfield in outfields:
@@ -400,7 +570,6 @@ def updateRuleFromOutfield(dblclick):
     outfield = app.getListBox(out_temp_path)[0]
     # TODO: limit to rule-outfields using parser
     for rule in app.getAllListItems(rules_listbox):
-        print(outfield + rule)
         if outfield in rule:
             app.selectListItem(rules_listbox, rule)
             break
@@ -473,7 +642,7 @@ def saveRulesheet():
     with open(rulesheet, "wb") as text_file:
         txt= ''
         for t in app.getAllListItems(rulesheet+'_rules'):
-            txt += t +'\n'
+            txt += t
         text_file.write(txt.strip('\n').encode('utf8'))
 
 def pasteOutfield():
@@ -554,6 +723,8 @@ def updateInpathFromOutpath():
     if app.getListBox('inputs')[0] != inpath:
         app.selectListItem('inputs', inpath)
 
+
+
 with gui("OPC form2doc") as app:
     with app.panedFrameVertical('inputs'):
         with app.panedFrame('input_paths'):
@@ -576,7 +747,7 @@ with gui("OPC form2doc") as app:
                 app.setListBoxDropTarget('inputs', addInDrop, replace=False)
                 app.setTabbedFrameChangeFunction('inputs',updateFormPathSelect)
             app.stopPanedFrame()
-            app.startPanedFrame('output_paths')
+            app.startPanedFrame('outpaths')
             app.setStretch('column')
             app.addLabel('Outputs','Outputs',0,2)
             app.addButton('Generate Output',generateOutput,32,2)
@@ -589,7 +760,7 @@ with gui("OPC form2doc") as app:
             app.startPanedFrame('output_previews')
             app.setStretch('column')
             app.addLabel('Output Preview','Output Preview',0,3)
-            app.addButton('Save Output',None,32,3)
+            app.addButton('Save Output',saveOutput,32,3)
             app.setStretch('both')
             with app.tabbedFrame('output_preview',1,3):
                 app.setTabbedFrameChangeFunction('output_preview', updateOutpathFromPreview)
@@ -662,12 +833,16 @@ with gui("OPC form2doc") as app:
 
     # app.setEntrySubmitFunction('form_entry_edit',updateFormTemplates)
 
-    generateOutput()
+    for inpath in app.getAllListItems('inputs'):
+        app.selectListItem('inputs',inpath)
+        for templatepath in out_temp_paths:
+            app.setTabbedFrameSelectedTab('out_templates', templatepath)
+            generateOutput()
 
 
-app.setFont(15)
-app.setBg("black")
-app.setFg("lightGray")
+    # app.setFont(15)
+    # app.setBg("black")
+    # app.setFg("lightGray")
 
 
 
