@@ -10,7 +10,7 @@ import ruleFunctions
 
 from form2doc import form2doc
 from ruleFunctions import RuleParseError
-
+from tkinter import TclError
 
 
 class MissingFieldError(Exception):
@@ -407,25 +407,26 @@ class liveDoc(object):
                 j += 1
             j = 0
             i+= 1
-            row += 1
-            self.text +=['']
-            self.txtodocpos += [[]]
+            if p.runs:
+                print('par '+str(i-1)+' has text')
+                row += 1
+                self.text +=['']
+                self.txtodocpos += [[]]
 
         print(self.txtodocpos)
 
         def key(event):
-            ''' Add one character to document.
-            '''
+            ''' Add one character to document.'''
             print('bind: key')
             print(event.char.encode('utf8'))
-            if event.char:
+            if event.char and event.char not in [u'\uf700',u'\uf701',u'\uf702',u'\uf703']:
                 txpos = self.textwidget.index('insert').split('.')
-                row, col = int(txpos[0]),int(txpos[1])
+                row, col = int(txpos[0])+1,int(txpos[1])
                 print(row, col)
                 docpos0 = self.txtodocpos[row]
                 print(docpos0)
                 docpos = docpos0[col]
-                p, r, c = docpos[0],docpos[1],docpos[2]
+                p, r, c = docpos[0],docpos[1],docpos[2] -1
                 currun = self.doc.paragraphs[p].runs[r]
                 currun.text = currun.text[:c] + event.char +currun.text[c+1:]
                 # insert new pos-list item
@@ -435,38 +436,58 @@ class liveDoc(object):
                 ccol = col
                 while c < len(currun.text):
                     self.txtodocpos[row][ccol] = (p,r,c)
+                    ccol += 1
+                    c+=1
                 self.text[row] = self.text[row][:col] + event.char + self.text[row][col+1:]
 
         def backspace(event):
             ''' For cutting, backspacing, deleting '''
-            txpos = self.textwidget.index('insert')
+            txpos = self.textwidget.index('insert').split('.')
+            row, col = int(txpos[0])+1,int(txpos[1])
             # we pop from the position list since we will be deleting at least
             # one character
-            docpos = self.txtodocpos.pop(txpos)
-            p, r, c = docpos[0],docpos[1],docpos[2]
-            currun = self.paragraphs[p].runs[r]
+            docpos = self.txtodocpos[row].pop(col)
+            p, r, c = docpos[0],docpos[1],docpos[2]-1
+            currun = self.doc.paragraphs[p].runs[r]
             try:
                 # deleting selection in text-widget
                 selection = event.widget.get('sel.first', 'sel.last')
             except TclError:
                 # or else delete a single character
-                selection = self.text[txpos]
-            while c < len(selection):
-                self.text = self.text[:txpos] + self.text[txpos+1:]
-                currun.text = currun.text[:c] + currun.text[c+1:]
-                txpos += 1
-                docpos = self.txtodocpos.pop(txpos)
+                selection = self.text[row][col-1]
+            s = 0
+            while s < len(selection):
+                if col - 1 not in range(len(self.text[row])):
+
+                    row -=1
+                    col = len(self.text[row])
+                print(selection, row,col)
+                print(self.text[row])
+                print(docpos, currun.text)
+                self.text[row]=self.text[row][:col-1] + self.text[row][col:]
+                currun.text = currun.text[:c-1]+currun.text[c:]
+                docpos = self.txtodocpos[row].pop(col-1)
                 p, r, c = docpos[0],docpos[1],docpos[2]
-                currun = self.paragraphs[p].runs[r]
+                currun = self.doc.paragraphs[p].runs[r]
+                col -= 1
+                ccol=col
+                cc = c
+                while cc < len(currun.text):
+                    self.txtodocpos[row][col] = (p,r,cc)
+                    cc+=1
+                    ccol+=1
+                s+=1
+            print(self.text[row])
+            print(currun.text)
 
         def paste(event):
             ''' Pastes text on the clipboard into the cursor position.
             '''
             # TODO: Paste with style/formatting?
-            txpos = self.textwidget.index('insert')
+            txpos = self.textwidget.index('insert').split('.')
             docpos = self.txtodocpos[txpos]
             p, r, c = docpos[0],docpos[1],docpos[2]
-            currun = self.paragraphs[p].runs[r]
+            currun = self.doc.paragraphs[p].runs[r]
             pastetxt = app.clipboard_get()
             self.text = self.text[:txpos] + pastetxt + self.text[txpos + len(pastetxt):]
             currun.text = currun.text[c] + pastetxt + currun.text[c + len(pastetxt):]
