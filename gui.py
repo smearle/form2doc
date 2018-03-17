@@ -417,10 +417,13 @@ class liveDoc(object):
 
         def key(event):
             ''' Add one character to document.'''
-            print('bind: key')
-            print(event.char.encode('utf8'))
             if event.char and event.char not in [u'\uf700',u'\uf701',u'\uf702',u'\uf703']:
-                txpos = self.textwidget.index('insert').split('.')
+                # delete selected characters, if any
+                try:
+                    txpos = self.textwidget.index('sel.first').split('.')
+                    backspace(event)
+                except TclError:
+                    txpos = self.textwidget.index('insert').split('.')
                 row, col = int(txpos[0])+1,int(txpos[1])
                 print(row, col)
                 docpos0 = self.txtodocpos[row]
@@ -442,47 +445,43 @@ class liveDoc(object):
 
         def backspace(event):
             ''' For cutting, backspacing, deleting '''
-            txpos = self.textwidget.index('insert').split('.')
-            row, col = int(txpos[0])+1,int(txpos[1])
-            # we pop from the position list since we will be deleting at least
-            # one character
-            docpos = self.txtodocpos[row].pop(col)
-            p, r, c = docpos[0],docpos[1],docpos[2]-1
-            currun = self.doc.paragraphs[p].runs[r]
             try:
+                txpos = self.textwidget.index('sel.last').split('.')
                 # deleting selection in text-widget
-                selection = event.widget.get('sel.first', 'sel.last')
+                selection = len(event.widget.get('sel.first', 'sel.last'))
             except TclError:
+                txpos = self.textwidge.index('insert')
                 # or else delete a single character
-                selection = self.text[row][col-1]
+                selection = 1
+            row, col = int(txpos[0])+1,int(txpos[1])
             s = 0
-            while s < len(selection):
-                if col - 1 not in range(len(self.text[row])):
+            while s < selection:
+                # delete moving backwards from cursor
+                while col - 1 not in range(len(self.text[row])):
 
                     row -=1
                     col = len(self.text[row])
-                print(selection, row,col)
-                print(self.text[row])
-                print(docpos, currun.text)
-                self.text[row]=self.text[row][:col-1] + self.text[row][col:]
-                currun.text = currun.text[:c-1]+currun.text[c:]
-                docpos = self.txtodocpos[row].pop(col-1)
-                p, r, c = docpos[0],docpos[1],docpos[2]
+
+                docpos = self.txtodocpos[row][col-1]
+                p, r, c = docpos[0],docpos[1],docpos[2]-1
                 currun = self.doc.paragraphs[p].runs[r]
+                print(row,col)
+                # print(self.text[row])
+                print(self.txtodocpos)
+                print(docpos)
+                print(currun.text)
+                self.text[row]=self.text[row][:col-1] + self.text[row][col:]
+                currun.text = currun.text[:c+1]+currun.text[c+2:]
+                self.txtodocpos[row]=self.txtodocpos[row][:-1]
                 col -= 1
-                ccol=col
-                cc = c
-                while cc < len(currun.text):
-                    self.txtodocpos[row][col] = (p,r,cc)
-                    cc+=1
-                    ccol+=1
                 s+=1
-            print(self.text[row])
+            # print(self.text[row])
             print(currun.text)
 
         def paste(event):
             ''' Pastes text on the clipboard into the cursor position.
             '''
+            print('welcome to paste')
             # TODO: Paste with style/formatting?
             txpos = self.textwidget.index('insert').split('.')
             docpos = self.txtodocpos[txpos]
