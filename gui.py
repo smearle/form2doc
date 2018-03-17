@@ -12,7 +12,6 @@ from form2doc import form2doc
 from ruleFunctions import RuleParseError
 from tkinter import TclError
 
-
 class MissingFieldError(Exception):
     pass
 
@@ -341,7 +340,7 @@ def generateOutput():
         app.setTabText('output_preview', outpath, output_name)
         # create output text-area, if it does not exist
         try:
-            textwidget = app.getTextArea(outpath)
+            textwidget = app.getTextAreaWidget(outpath)
         except appJar.appjar.ItemLookupError:
             textwidget = app.addScrolledTextArea(outpath)
             app.addListItem('outputs', outpath)
@@ -450,7 +449,7 @@ class liveDoc(object):
                 # deleting selection in text-widget
                 selection = len(event.widget.get('sel.first', 'sel.last'))
             except TclError:
-                txpos = self.textwidge.index('insert')
+                txpos = self.textwidget.index('insert').split('.')
                 # or else delete a single character
                 selection = 1
             row, col = int(txpos[0])+1,int(txpos[1])
@@ -481,9 +480,14 @@ class liveDoc(object):
         def paste(event):
             ''' Pastes text on the clipboard into the cursor position.
             '''
+            try:
+                txpos = self.textwidget.index('sel.first').split('.')
+                # deleting selection in text-widget
+                backspace(event)
+            except TclError:
+                txpos = self.textwidge.index('insert').split('.')
             print('welcome to paste')
             # TODO: Paste with style/formatting?
-            txpos = self.textwidget.index('insert').split('.')
             docpos = self.txtodocpos[txpos]
             p, r, c = docpos[0],docpos[1],docpos[2]
             currun = self.doc.paragraphs[p].runs[r]
@@ -703,7 +707,8 @@ def deleteRule():
     sheetpath = app.getTabbedFrameSelectedTab('rulesheets')
     app.removeListItem(sheetpath+'_rules',app.getListBox(sheetpath+'_rules'))
 
-def updateInputTabSelect():
+def updateIntabFromInpath():
+    print('updateIntabFromInpath')
     if app.getListBox('inputs')!= None:
         selected_form = app.getListBox('inputs')[0]
         selected_tab = app.getTabbedFrameSelectedTab('inputs')
@@ -712,32 +717,46 @@ def updateInputTabSelect():
             updateOutpathFromInpath()
 
 # Catches loop
-def updateFormPathSelect():
+def updateInpathFromIntab():
+    print('updateInpathFromIntab')
     selected_form = app.getListBox('inputs')[0]
     selected_tab = app.getTabbedFrameSelectedTab('inputs')
+    print(selected_form)
+    print(selected_tab)
     if not selected_tab == selected_form:
         app.selectListItem('inputs',selected_tab)
 
 def updateOutPreviewFromOutpath():
+    print('updateOutPreviewFromOutpath')
     paths = app.getListBox('outputs')
     if app.getTabbedFrameSelectedTab('output_preview') not in paths:
         app.setTabbedFrameSelectedTab('output_preview', paths[0])
 
 # catches loop
 def updateOutpathFromPreview():
+    print('updateOutpathFromPreview')
     outpath = app.getTabbedFrameSelectedTab('output_preview')
-
     if outpath not in app.getListBox('outputs'):
+        lb = app.getListBoxWidget('outputs')
+        END = len(app.getAllListItems('outputs'))-1
+        lb.selection_clear(0, END)
         app.selectListItem('outputs',outpath)
+    else:
+        pass
 
 
 def updateOutpathFromInpath():
+    print('updateOutpathFromInpath')
     inpath = app.getListBox('inputs')[0]
+    lb = app.getListBoxWidget('outputs')
+    END = len(app.getAllListItems('outputs'))-1
+    lb.selection_clear(0, END)
     for outpath in ins2outs[inpath]:
         if outpath not in app.getListBox('outputs'):
             app.selectListItem('outputs',outpath)
 
 def updateInpathFromOutpath():
+    print('updateInpathFromOutpath')
     outpath = app.getListBox('outputs')[0]
     inpath = outs2ins[outpath]
     if app.getListBox('inputs')[0] != inpath:
@@ -756,7 +775,7 @@ with gui("OPC form2doc") as app:
             app.setStretch('both')
             app.addListBox('inputs',[],1,0,1,31)
             app.setListBoxGroup('inputs')
-            app.setListBoxChangeFunction('inputs', updateInputTabSelect)
+            app.setListBoxChangeFunction('inputs', updateIntabFromInpath)
 
             app.startPanedFrame('input_tabs')
             app.setStretch('column')
@@ -765,7 +784,7 @@ with gui("OPC form2doc") as app:
             app.setStretch('both')
             with app.tabbedFrame('inputs',1,1,1,31):
                 app.setListBoxDropTarget('inputs', addInDrop, replace=False)
-                app.setTabbedFrameChangeFunction('inputs',updateFormPathSelect)
+                app.setTabbedFrameChangeFunction('inputs',updateInpathFromIntab)
             app.stopPanedFrame()
             app.startPanedFrame('outpaths')
             app.setStretch('column')
