@@ -7,6 +7,7 @@ import os
 import re
 import inspect
 import ruleFunctions
+import traceback
 
 from form2doc import form2doc
 from ruleFunctions import RuleParseError
@@ -20,8 +21,8 @@ out_temp_paths = []
 # A dictionary of filepaths to liveDoc objects.
 outdocs = {}
 
-ins2outs = {}
-outs2ins = {}
+instoouts = {}
+outstoins = {}
 
 src_dir = os.path.dirname(os.path.realpath(__file__))
 # OPC entry letter rules
@@ -47,8 +48,6 @@ template_fields = None
 # out_template --> [fillable_field(s)] --> [replacement(s)] --> [condition(s)] (optional)
 #                                      --> alt [replacement(s)] --> alt [conditions]
 outfields2rules = {}
-# Dictionary of input paths to lists of output paths
-ins_to_outs = {}
 
 box_ptrn = re.compile('\[.*?\]')
 
@@ -230,7 +229,7 @@ def addInDrop(dropdata):
         addIn(f)
 
 def addIn(filepath):
-    ins2outs[filepath]=[]
+    instoouts[filepath]=[]
     app.openTabbedFrame('inputs')
     if filepath not in app.getAllListItems('inputs'):
         app.addListItem('inputs', filepath)
@@ -332,8 +331,8 @@ def generateOutput():
     indoc.save(outpath)
     app.openTabbedFrame('output_preview')
 
-    ins2outs[sel_inpath]+=[outpath]
-    outs2ins[outpath] = sel_inpath
+    instoouts[sel_inpath]+=[outpath]
+    outstoins[outpath] = sel_inpath
 
     # create or open output preview tab
     with app.tab(outpath):
@@ -406,11 +405,11 @@ class liveDoc(object):
                 j += 1
             j = 0
             i+= 1
-            if p.runs:
-                print('par '+str(i-1)+' has text')
-                row += 1
-                self.text +=['']
-                self.txtodocpos += [[]]
+        # if p.runs:
+            print('par '+str(i-1)+' has text')
+            row += 1
+            self.text +=['']
+            self.txtodocpos += [[]]
 
         print(self.txtodocpos)
 
@@ -419,6 +418,7 @@ class liveDoc(object):
             if event.char and event.char not in [u'\uf700',u'\uf701',u'\uf702',u'\uf703']:
                 # delete selected characters, if any
                 try:
+                    selection = len(event.widget.get('sel.first', 'sel.last'))
                     txpos = self.textwidget.index('sel.first').split('.')
                     backspace(event)
                 except TclError:
@@ -428,19 +428,26 @@ class liveDoc(object):
                 docpos0 = self.txtodocpos[row]
                 print(docpos0)
                 docpos = docpos0[col]
-                p, r, c = docpos[0],docpos[1],docpos[2] -1
+                p, r, c = docpos[0],docpos[1],docpos[2]
                 currun = self.doc.paragraphs[p].runs[r]
-                currun.text = currun.text[:c] + event.char +currun.text[c+1:]
+                currun.text = currun.text[:c] + event.char +currun.text[c:]
                 # insert new pos-list item
                 self.txtodocpos[row].insert(col,(p,r,c))
+                print(self.txtodocpos[row])
                 # adjust the char-pos of all positions left in the run
-                c += 1
+                # c += 1
                 ccol = col
+                print(len(currun.text), currun.text)
                 while c < len(currun.text):
                     self.txtodocpos[row][ccol] = (p,r,c)
+                    print(self.txtodocpos[row])
+
                     ccol += 1
                     c+=1
                 self.text[row] = self.text[row][:col] + event.char + self.text[row][col+1:]
+
+                docpos0 = self.txtodocpos[row]
+                print(docpos0)
 
         def backspace(event):
             ''' For cutting, backspacing, deleting '''
@@ -708,58 +715,101 @@ def deleteRule():
     app.removeListItem(sheetpath+'_rules',app.getListBox(sheetpath+'_rules'))
 
 def updateIntabFromInpath():
-    print('updateIntabFromInpath')
+    # print('updateIntabFromInpath')
+    CALLOUT = False
     if app.getListBox('inputs')!= None:
         selected_form = app.getListBox('inputs')[0]
         selected_tab = app.getTabbedFrameSelectedTab('inputs')
         if selected_tab != selected_form:
-            app.setTabbedFrameSelectedTab('inputs', selected_form)
-            updateOutpathFromInpath()
+            # print('CHANGING')
+            if CALLOUT:
+                app.setTabbedFrameSelectedTab('inputs', selected_form)
+            else:
+                app.setTabbedFrameSelectedTab('inputs', selected_form)
+
 
 # Catches loop
 def updateInpathFromIntab():
-    print('updateInpathFromIntab')
-    selected_form = app.getListBox('inputs')[0]
-    selected_tab = app.getTabbedFrameSelectedTab('inputs')
-    print(selected_form)
-    print(selected_tab)
-    if not selected_tab == selected_form:
-        app.selectListItem('inputs',selected_tab)
+    # for line in traceback.format_stack():
+    #     print(line.strip())
+    # print('updateInpathFromIntab')
+    selected_inpath = app.getListBox('inputs')[0]
+    selected_intab = app.getTabbedFrameSelectedTab('inputs')
+    selected_outpaths = app.getListBox('outputs')
 
-def updateOutPreviewFromOutpath():
-    print('updateOutPreviewFromOutpath')
-    paths = app.getListBox('outputs')
-    if app.getTabbedFrameSelectedTab('output_preview') not in paths:
-        app.setTabbedFrameSelectedTab('output_preview', paths[0])
+    if not selected_intab == selected_inpath:
+        # print('CHANGING')
+        app.selectListItem('inputs',selected_intab,callFunction=False)
+    CALLOUT = False
+    # print(instoouts[selected_intab])
+    for outpath in selected_outpaths:
+        # print(outpath)
+        if outpath not in instoouts[selected_intab]:
+            CALLOUT = True
+    if CALLOUT:
+        # print('desired outpath: ' + str(instoouts[selected_inpath]))
+        # print('actual outpath' + str(selected_outpaths))
+        # print('updating outpath from inpath!')
+        updateOutpathFromInpath()
+
+def updateOutTabFromOutpath():
+    print('updateOutTabFromOutpath')
+    outpaths = app.getListBox('outputs')
+    outpath = outpaths[0]
+    inpath = outstoins[outpath]
+    if app.getTabbedFrameSelectedTab('output_preview') not in outpaths:
+        # print('CHANGING')
+        app.setTabbedFrameSelectedTab('output_preview', outpaths[0])
+    if inpath != app.getListBox('inputs')[0]:
+        # print('desired inpath: ' + inpath)
+        # print('actual inpath: ' + app.getListBox('inputs')[0])
+        # print('! updating inpath from outpath !')
+        updateInpathFromOutpath()
+        CALLOUT = True
 
 # catches loop
-def updateOutpathFromPreview():
-    print('updateOutpathFromPreview')
+def updateOutpathFromOutTab():
+    # print('updateOutpathFromOutTab')
+    CALLOUT = False
     outpath = app.getTabbedFrameSelectedTab('output_preview')
     if outpath not in app.getListBox('outputs'):
+        # print('CHANGING')
         lb = app.getListBoxWidget('outputs')
-        END = len(app.getAllListItems('outputs'))-1
+        END = len(app.getAllListItems('outputs'))
         lb.selection_clear(0, END)
-        app.selectListItem('outputs',outpath)
-    else:
-        pass
+        if CALLOUT:
+            app.selectListItem('outputs',outpath,callFunction=False)
+        else:
+            app.selectListItem('outputs',outpath,callFunction=False)
+    inpath = outstoins[outpath]
+    if inpath != app.getListBox('inputs')[0]:
+        # print('desired inpath: ' + inpath)
+        # print('actual inpath: ' + app.getListBox('inputs')[0])
+        # print('! updating inpath from outpath !')
+        updateInpathFromOutpath()
+        CALLOUT = True
 
 
 def updateOutpathFromInpath():
-    print('updateOutpathFromInpath')
+    # print('updateOutpathFromInpath')
     inpath = app.getListBox('inputs')[0]
     lb = app.getListBoxWidget('outputs')
-    END = len(app.getAllListItems('outputs'))-1
+    END = len(app.getAllListItems('outputs'))
     lb.selection_clear(0, END)
-    for outpath in ins2outs[inpath]:
-        if outpath not in app.getListBox('outputs'):
+    for outpath in instoouts[inpath]:
+        if instoouts[inpath].index(outpath) != len(instoouts[inpath])-1:
+            # print('implicitly selecting '+outpath)
+            app.selectListItem('outputs', outpath, callFunction = False)
+        else:
+            print('selecting '+outpath)
             app.selectListItem('outputs',outpath)
 
 def updateInpathFromOutpath():
-    print('updateInpathFromOutpath')
+    # print('updateInpathFromOutpath')
     outpath = app.getListBox('outputs')[0]
-    inpath = outs2ins[outpath]
+    inpath = outstoins[outpath]
     if app.getListBox('inputs')[0] != inpath:
+        # print('CHANGING')
         app.selectListItem('inputs', inpath)
 
 
@@ -782,9 +832,10 @@ with gui("OPC form2doc") as app:
             app.addLabel('Input Preview', 'Input Preview', 0,1)
             app.addButton('Save Form',saveFormedit,32,1)
             app.setStretch('both')
-            with app.tabbedFrame('inputs',1,1,1,31):
+            with app.tabbedFrame('inputs',1,1,1,31) as intabs:
                 app.setListBoxDropTarget('inputs', addInDrop, replace=False)
                 app.setTabbedFrameChangeFunction('inputs',updateInpathFromIntab)
+                intabs.changeOnFocus = False
             app.stopPanedFrame()
             app.startPanedFrame('outpaths')
             app.setStretch('column')
@@ -794,15 +845,16 @@ with gui("OPC form2doc") as app:
             app.addListBox('outputs',[],1,2,1,31)
             app.setListBoxGroup('outputs')
             app.setListBoxMulti('outputs')
-            app.setListBoxChangeFunction('outputs', updateOutPreviewFromOutpath)
+            app.setListBoxChangeFunction('outputs', updateOutTabFromOutpath)
             app.stopPanedFrame()
             app.startPanedFrame('output_previews')
             app.setStretch('column')
             app.addLabel('Output Preview','Output Preview',0,3)
             app.addButton('Save Output',saveOutput,32,3)
             app.setStretch('both')
-            with app.tabbedFrame('output_preview',1,3):
-                app.setTabbedFrameChangeFunction('output_preview', updateOutpathFromPreview)
+            with app.tabbedFrame('output_preview',1,3) as outtabs:
+                app.setTabbedFrameChangeFunction('output_preview', updateOutpathFromOutTab)
+                intabs.changeOnFocus = False
             app.stopPanedFrame()
 
         with app.panedFrame('templates'):
