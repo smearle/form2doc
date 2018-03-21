@@ -12,6 +12,8 @@ import traceback
 from form2doc import form2doc
 from ruleFunctions import RuleParseError
 from tkinter import TclError
+from tkinter import Event
+from pprint import pprint
 
 class MissingFieldError(Exception):
     pass
@@ -52,7 +54,7 @@ outfields2rules = {}
 box_ptrn = re.compile('\[.*?\]')
 
 def compileRules():
-    rules = app.getAllListItems(app.getTabbedFrameSelectedTab('rulesheets')+'_rules')
+    rules = [rule.decode('utf8') for rule in app.getAllListItems(app.getTabbedFrameSelectedTab('rulesheets')+'_rules')]
     for rule in rules:
         if rule.replace(' ','') == '':
             rules.delete(rule)
@@ -152,42 +154,6 @@ def saveOutput():
     outpath = app.getTabbedFrameSelectedTab('output_preview')
     outdocs[outpath].save(outpath)
 
-    # out_temp_path = app.getTabbedFrameSelectedTab('out_templates')
-    # template = Document(open(out_temp_path))
-    # out_path = app.getTabbedFrameSelectedTab('output_preview')
-    # outtext = app.getTextArea('output_preview')
-    # p = 0
-    # r = 0
-    # i = 0
-    # char = ''
-    #
-    # #
-    #
-    # for i in range(len(outtext)):
-    #     par = doc.paragraphs[p]
-    #     run = par.runs[r]
-    #     if i - prev in range(len(run.text)):
-    #         char = run.text[i-prev]
-    #     else:
-    #         # go to next run
-    #         prev += len(run.text)
-    #         r += 1
-    #         if r in len(par.runs):
-    #             run = par.runs[r]
-    #             char = run[i-prev]
-    #         # or next paragraph
-    #         else:
-    #             p += 1
-    #             r = 0
-    #             par = doc.paragraphs[p]
-    #             run = par.runs[r]
-    #
-    #
-    #     if p in range(len(doc.paragraphs)):
-    #         pass
-    #     else:
-    #         pass
-
 
 def getFiles(filedir, extension):
     i=0
@@ -220,18 +186,19 @@ def addInDrop(dropdata):
     global formpaths_to_formdicts
     data =parseDropDate(dropdata)
     app.setStretch('column')
-    app.openTabbedFrame('inputs')
-    files = []
-    for f in data:
-        files = files + getFiles([f],'pdf')
-    for f in files:
-        f=f.decode('utf-8')
-        addIn(f)
+    with app.tabbedFrame('inputs'):
+        files = []
+        for f in data:
+            files = files + getFiles([f],'pdf')
+        for f in files:
+            f=f.decode('utf-8')
+            addIn(f)
 
 def addIn(filepath):
     instoouts[filepath]=[]
-    app.openTabbedFrame('inputs')
-    if filepath not in app.getAllListItems('inputs'):
+    with app.tabbedFrame('inputs'):
+        if filepath in app.getAllListItems('inputs'):
+            return
         app.addListItem('inputs', filepath)
         # worker_entries = get_forms(f, inputs_to_form_entries)
         with open(filepath,'rb') as infile:
@@ -250,6 +217,10 @@ def addIn(filepath):
 
             app.setStretch('both')
             with app.tab(filepath):
+                # intab = intabs.widgetStore[filepath][0]
+                # print(intab)
+                # pprint(dir(intab))
+                # intab.bind('<Button-1>', updateInpathFromIntab)
                 app.setTabText('inputs',filepath,fullname)
                 with app.scrollPane('Worker Form Edit' + filepath):
                     infields =sorted([key.strip(' ') for key in worker_entries.keys()])
@@ -329,69 +300,47 @@ def generateOutput():
 
     indoc = Document(out_template)
     indoc.save(outpath)
-    app.openTabbedFrame('output_preview')
+    with app.tabbedFrame('output_preview'):
 
-    instoouts[sel_inpath]+=[outpath]
-    outstoins[outpath] = sel_inpath
+        instoouts[sel_inpath]+=[outpath]
+        outstoins[outpath] = sel_inpath
 
-    # create or open output preview tab
-    with app.tab(outpath):
-        app.setTabText('output_preview', outpath, output_name)
-        # create output text-area, if it does not exist
-        try:
-            textwidget = app.getTextAreaWidget(outpath)
-        except appJar.appjar.ItemLookupError:
-            textwidget = app.addScrolledTextArea(outpath)
-            app.addListItem('outputs', outpath)
+        # create or open output preview tab
+        with app.tab(outpath):
+            # outtab = outtabs.getTab(outpath)
+            # outtab.bind('<Button-1>', updateOutpathFromOutTab)
+            # outtabs.bind('<Button-1>', updateOutpathFromOutTab)
 
-    outdoc = liveDoc(outpath, textwidget)
-    outdocs[outpath] = outdoc
-    app.setTextArea(outpath,'\n'.join(outdoc.text).strip('\n'))
+            app.setTabText('output_preview', outpath, output_name)
+            # create output text-area, if it does not exist
+            try:
+                textwidget = app.getTextAreaWidget(outpath)
+            except appJar.appjar.ItemLookupError:
+                textwidget = app.addScrolledTextArea(outpath)
+                app.addListItem('outputs', outpath)
 
-    # compiled_rules = compileRules()
-    # for rule in compiled_rules:
-    #     for replacee in rule.replacees:
-    #         print('replacee: '+replacee)
-    #         print('replacement: '+rule.replacement)
-    #         replacement = rule.replacement
-    #         # find replacement positions
-    #         i = 0
-    #         while plaintxt_out[i:].upper().find(replacee.upper()) >=0:
-    #             # the position of the current replacee in the overall doc
-    #             j = i+ plaintxt_out[i:].upper().find(replacee.upper())
-    #             if plaintxt_out[j-2] == '.':
-    #                 replacement = replacement.capitalize()
-    #             elif plaintxt_out[j-4:j-1] == '(n)':
-    #                 r = replacement[0]
-    #                 if r == 'a' or r=='e' or r=='u' or r=='i' or r=='o':
-    #                     plaintxt_out = plaintxt_out[:j-4] + 'n' + plaintxt_out[j-1:]
-    #                     j -= 2
-    #
-    #                 else:
-    #                     plaintxt_out = plaintxt_out[:j-4] + plaintxt_out[j-1:]
-    #                     j -= 3
-    #             plaintxt_out = plaintxt_out[:j] + replacement + plaintxt_out[j+ len(replacee):]
-    #             i = j + len(replacement)
-    #
-    # app.setTextArea(outpath, plaintxt_out)
-    # indoc.save(outpath)
+        outdoc = liveDoc(outpath, textwidget)
+        outdocs[outpath] = outdoc
+
 
 
 class liveDoc(object):
     def __init__(self, outpath, textwidget):
         self.doc = Document(outpath)
         self.outpath = outpath
-        self.text = ['','']
+        self.text = []
         # A list the length of the document's plaintext, where each is a triple
         # of positions (par,run, char)
         # specifying the character's position in the docx object.
-        self.txtodocpos = [[], []]
+        self.txtodocpos = []
         # The tkinter text widget with which the doc is to be binded for live editing.
         self.textwidget = textwidget
 
-        row = 1
-        i, j, k = 0, 0, 0
+
+        row, i, j, k = 0, 0, 0, 0
         for p in self.doc.paragraphs:
+            self.text +=['']
+            self.txtodocpos += [[]]
             for r in p.runs:
                 self.text[row] += r.text
                 for c in r.text:
@@ -408,27 +357,39 @@ class liveDoc(object):
         # if p.runs:
             print('par '+str(i-1)+' has text')
             row += 1
-            self.text +=['']
-            self.txtodocpos += [[]]
 
-        print(self.txtodocpos)
+        # print(self.txtodocpos)
 
         def key(event):
             ''' Add one character to document.'''
+            print(repr(event.char))
+            print(event.type)
+            if '@' in event.char:
+                print('command')
             if event.char and event.char not in [u'\uf700',u'\uf701',u'\uf702',u'\uf703']:
                 # delete selected characters, if any
                 try:
                     selection = len(event.widget.get('sel.first', 'sel.last'))
+                    print('selection length: '+ str(selection))
                     txpos = self.textwidget.index('sel.first').split('.')
                     backspace(event)
                 except TclError:
                     txpos = self.textwidget.index('insert').split('.')
-                row, col = int(txpos[0])+1,int(txpos[1])
+                row, col = int(txpos[0])-1,int(txpos[1])
                 print(row, col)
-                docpos0 = self.txtodocpos[row]
-                print(docpos0)
-                docpos = docpos0[col]
-                p, r, c = docpos[0],docpos[1],docpos[2]
+                txtodocpos_row = self.txtodocpos[row]
+                print(txtodocpos_row)
+                # in case we are adding to the end of a paragraph
+                if col == len(txtodocpos_row):
+                    # in case the paragraph is empty
+                    if col == 0:
+                        p, r, c = row, 0,0
+                    else:
+                        docpos = txtodocpos_row[col-1]
+                        p, r, c = docpos[0],docpos[1],docpos[2]+1
+                else:
+                    docpos = txtodocpos_row[col]
+                    p, r, c = docpos[0],docpos[1],docpos[2]
                 currun = self.doc.paragraphs[p].runs[r]
                 currun.text = currun.text[:c] + event.char +currun.text[c:]
                 # insert new pos-list item
@@ -449,31 +410,46 @@ class liveDoc(object):
                 docpos0 = self.txtodocpos[row]
                 print(docpos0)
 
+        # from Scanny: https://github.com/python-openxml/python-docx/issues/33
+        def delete_paragraph(paragraph):
+            p = paragraph._element
+            p.getparent().remove(p)
+            p._p = p._element = None
+
         def backspace(event):
             ''' For cutting, backspacing, deleting '''
             try:
                 txpos = self.textwidget.index('sel.last').split('.')
-                # deleting selection in text-widget
+                # delete multi-character selection in text-widget
                 selection = len(event.widget.get('sel.first', 'sel.last'))
             except TclError:
                 txpos = self.textwidget.index('insert').split('.')
                 # or else delete a single character
                 selection = 1
-            row, col = int(txpos[0])+1,int(txpos[1])
+            print('selection: ' + str(event.widget.get('sel.first', 'sel.last')))
+            print(str(selection)+ ' characters selected')
+            row, col = int(txpos[0])-1,int(txpos[1])
+            # assuming a new line equates to a new paragraph
+            curpar = self.doc.paragraphs[row]
             s = 0
             while s < selection:
                 # delete moving backwards from cursor
                 while col - 1 not in range(len(self.text[row])):
-
+                    # delete empty paragraph
+                    if not self.text[row]:
+                        self.text.pop(row)
+                        self.txtodocpos.pop(row)
+                        delete_paragraph(self.doc.paragraphs[row])
                     row -=1
                     col = len(self.text[row])
+                    s+=1
+
 
                 docpos = self.txtodocpos[row][col-1]
                 p, r, c = docpos[0],docpos[1],docpos[2]-1
                 currun = self.doc.paragraphs[p].runs[r]
                 print(row,col)
-                # print(self.text[row])
-                print(self.txtodocpos)
+                print(self.text[row])
                 print(docpos)
                 print(currun.text)
                 self.text[row]=self.text[row][:col-1] + self.text[row][col:]
@@ -482,30 +458,90 @@ class liveDoc(object):
                 col -= 1
                 s+=1
             # print(self.text[row])
-            print(currun.text)
+            # print(currun.text)
 
         def paste(event):
             ''' Pastes text on the clipboard into the cursor position.
             '''
-            try:
-                txpos = self.textwidget.index('sel.first').split('.')
-                # deleting selection in text-widget
-                backspace(event)
-            except TclError:
-                txpos = self.textwidge.index('insert').split('.')
-            print('welcome to paste')
-            # TODO: Paste with style/formatting?
-            docpos = self.txtodocpos[txpos]
-            p, r, c = docpos[0],docpos[1],docpos[2]
-            currun = self.doc.paragraphs[p].runs[r]
-            pastetxt = app.clipboard_get()
-            self.text = self.text[:txpos] + pastetxt + self.text[txpos + len(pastetxt):]
-            currun.text = currun.text[c] + pastetxt + currun.text[c + len(pastetxt):]
-            self.txtodocpos = self.txtodocpos[:txpos] + [(p,r,c+i) for i in range(len(pastetxt))] + txtodocpos[txpos + len(pastetxt):]
+            cliptext = event.widget.clipboard_get()
+            print('cliptext: '+cliptext)
+            if not cliptext and self.textwidget.get('sel.first', 'sel.last'):
+                backspace()
+            else:
+                # write reverse so as to skip moving the cursor
+                for c in cliptext[::-1]:
+                    event.char = c
+                    key(event)
+            # try:
+            #     txpos = self.textwidget.index('sel.first').split('.')
+            #     # deleting selection in text-widget
+            #     backspace(event)
+            # except TclError:
+            #     txpos = self.textwidge.index('insert').split('.')
+            # print('welcome to paste')
+            # int(txpos[0])-1,int(txpos[1])
+            # # TODO: Paste with style/formatting?
+            # docpos = self.txtodocpos[txpos]
+            # p, r, c = docpos[0],docpos[1],docpos[2]
+            # currun = self.doc.paragraphs[p].runs[r]
+            # pastetxt = app.clipboard_get()
+            # self.text = self.text[:txpos] + pastetxt + self.text[txpos + len(pastetxt):]
+            # currun.text = currun.text[c] + pastetxt + currun.text[c + len(pastetxt):]
+            # self.txtodocpos = self.txtodocpos[:txpos] + [(p,r,c+i) for i in range(len(pastetxt))] + txtodocpos[txpos + len(pastetxt):]
 
-        textwidget.bind('<Key>', key)
+        textwidget.bind('<KeyRelease>', key)
         textwidget.bind('<BackSpace>', backspace)
-        textwidget.bind('<Control-v>', paste)
+        textwidget.bind('<Command-v>', paste)
+        textwidget.bind('<Command-c', None)
+        textwidget.bind('Command-x',None)
+
+        self.textwidget.insert("insert",'\n'.join(self.text))
+        # # Empty event obkject allowing for simulation of keystrokes
+        # event = Event()
+        # compiled_rules = compileRules()
+        # for rule in compiled_rules:
+        #     for replacee in rule.replacees:
+        #         print('replacee: '+replacee)
+        #         print('replacement: '+rule.replacement)
+        #         replacement = rule.replacement
+        #         # find replacement positions for par in self.text:
+        #         for par in self.text:
+        #             j = par.upper().find(replacee.upper())
+        #             while j >=0:
+        #                 # the position of the current replacee in the paragraph
+        #                 # print(par)
+        #                 print('replacee index: '+str(j))
+        #                 print('paragraph length: '+str(len(par)))
+        #                 if j>2 and par[j-2] == '.':
+        #                     replacement = replacement.capitalize()
+        #                 elif j>4 and self.text[j-4:j-1] == '(n)':
+        #                     r = replacement[0]
+        #                     self.textwidget.mark_set("insert", "%d.%d" % (i + 1, j-1))
+        #                     if r == 'a' or r=='e' or r=='u' or r=='i' or r=='o':
+        #                         backspace(event)
+        #                         self.textwidget.mark_set("insert", "%d.%d" % (i + 1, j-3))
+        #                         backspace(event)
+        #                         j -= 2
+        #                     else:
+        #                         backspace(event)
+        #                         backspace(event)
+        #                         backspace(event)
+        #                         j -= 3
+        #                 self.textwidget.clipboard_clear()
+        #                 self.textwidget.clipboard_append(replacement)
+        #                 self.textwidget.mark_set("sel.first", "%d.%d" % (i, j))
+        #                 # print('replacee length: '+ str(len(replacee)))
+        #                 # # print('sel.first position: '+self.textwidget.get('sel.first'))
+        #                 j += len(replacement)
+        #                 #
+        #                 self.textwidget.mark_set("sel.last", "%d.%d" % (i, j))
+        #                 # print('sel.first position: '+self.textwidget.get('sel.first'))
+        #                 print('selection: ' + str(self.textwidget.get('sel.first', 'sel.last')))
+        #                 event.widget = self.textwidget
+        #                 paste(event)
+        #                 j = par[j:].upper().find(replacee.upper())
+        #
+        #             i += 1
 
     def save(self, outpath):
         return self.doc.save(outpath)
@@ -517,24 +553,23 @@ def updateRuleeditEntry():
 
 def addInTemplatesDrop(dropdata):
     data = parseDropDate(dropdata)
-    app.openTabbedFrame('form_templates')
-    files = []
-    for f in data:
-        files = files + getFiles([f],'pdf')
-    for f in files:
-        addInTemplate(f)
+    with app.tabbedFrame('form_templates'):
+        files = []
+        for f in data:
+            files = files + getFiles([f],'pdf')
+        for f in files:
+            addInTemplate(f)
 
 def addInTemplate(filepath):
-    app.openTabbedFrame('form_templates')
-    template_name = filepath.split('/')[-1].replace('.pdf','')
-    with open(filepath,'rb') as intemp:
-        template_form = PdfFileReader(intemp)
-        with app.tab(template_name):
-            app.setStretch('both')
-
-            app.addListBox(template_name,sorted(template_form.getFields()),0,0,10,10)
-            app.setListBoxGroup(template_name)
-            app.setListBoxChangeFunction(template_name,updateFormTemplateEdit)
+    with app.tabbedFrame('form_templates'):
+        template_name = filepath.split('/')[-1].replace('.pdf','')
+        with open(filepath,'rb') as intemp:
+            template_form = PdfFileReader(intemp)
+            with app.tab(template_name):
+                app.setStretch('both')
+                app.addListBox(template_name,sorted(template_form.getFields()),0,0,10,10)
+                app.setListBoxGroup(template_name)
+                app.setListBoxChangeFunction(template_name,updateFormTemplateEdit)
 
 
 
@@ -551,49 +586,49 @@ def addOutTemplate(f):
     global out_temp_paths
     out_temp_paths += [f]
     app.setStretch('both')
-    app.openTabbedFrame('out_templates')
-    # Assumes the name (not just path) of each template file is unique.
-    template_name = f.split('/')[-1].replace('.docx','')
+    with app.tabbedFrame('out_templates'):
+        # Assumes the name (not just path) of each template file is unique.
+        template_name = f.split('/')[-1].replace('.docx','')
 
-    with app.tab(f):
-        app.setTabText('out_templates',f,template_name)
-        # app.addListBox(template_name + '_boxes',boxes,0,2)
-        out_temp_listbox = app.addListBox(f ,None,0,1,10,10)
-    app.setListBoxGroup(f)
-    app.setListBoxChangeFunction(f,updateRuleeditEntry)
-    outfields = getDocFields(f)
-    outfields = [s.decode().upper().strip(' ') for s in sorted(outfields)]
-    for outfield in outfields:
-        if outfield not in app.getAllListItems(f):
-            app.addListItem(f, outfield)
-    app.getListBoxWidget(f).bind("<Double-Button-1>", updateRuleFromOutfield)
+        with app.tab(f):
+            app.setTabText('out_templates',f,template_name)
+            # app.addListBox(template_name + '_boxes',boxes,0,2)
+            out_temp_listbox = app.addListBox(f ,None,0,1,10,10)
+        app.setListBoxGroup(f)
+        app.setListBoxChangeFunction(f,updateRuleeditEntry)
+        outfields = getDocFields(f)
+        outfields = [s.decode().upper().strip(' ') for s in sorted(outfields)]
+        for outfield in outfields:
+            if outfield not in app.getAllListItems(f):
+                app.addListItem(f, outfield)
+        app.getListBoxWidget(f).bind("<Double-Button-1>", updateRuleFromOutfield)
 
-    # add empty rules for unaccounted-for outfields
-    replacee_lists = []
-    sel_rulesheet = app.getTabbedFrameSelectedTab('rulesheets')
-    if sel_rulesheet == None:
-        path = rulesheet_dirpath+'/'+'New Rules.txt'
-        new_rulesheet = open(path, 'wb')
-        new_rulesheet.close()
-        addRulesheet(path)
-    sel_rulesheet = app.getTabbedFrameSelectedTab('rulesheets')
-    rules_listbox = sel_rulesheet+'_rules'
-    rules = app.getAllListItems(rules_listbox)
-    # TODO:
-    for rule in rules:
-         replacee_lists += box_ptrn.findall(rule.decode().split('replaced by')[0])
+        # add empty rules for unaccounted-for outfields
+        replacee_lists = []
+        sel_rulesheet = app.getTabbedFrameSelectedTab('rulesheets')
+        if sel_rulesheet == None:
+            path = rulesheet_dirpath+'/'+'New Rules.txt'
+            new_rulesheet = open(path, 'wb')
+            new_rulesheet.close()
+            addRulesheet(path)
+        sel_rulesheet = app.getTabbedFrameSelectedTab('rulesheets')
+        rules_listbox = sel_rulesheet+'_rules'
+        rules = app.getAllListItems(rules_listbox)
+        # TODO:
+        for rule in rules:
+             replacee_lists += box_ptrn.findall(rule.decode().split('replaced by')[0])
 
-    outfields = app.getAllListItems(f)
-    for outfield in outfields:
-        in_rule = False
-        for replacee_list in replacee_lists:
-            if outfield in replacee_list:
-                in_rule=True
-        if not in_rule:
-            rules+= [outfield +' replaced by {}']
-    rules = sorted(rules)
-    app.clearListBox(rules_listbox)
-    app.addListItems(rules_listbox, rules)
+        outfields = app.getAllListItems(f)
+        for outfield in outfields:
+            in_rule = False
+            for replacee_list in replacee_lists:
+                if outfield in replacee_list:
+                    in_rule=True
+            if not in_rule:
+                rules+= [outfield +' replaced by {}']
+        rules = sorted(rules)
+        app.clearListBox(rules_listbox)
+        app.addListItems(rules_listbox, rules)
 
 def updateRuleFromOutfield(dblclick):
     rules_listbox = app.getTabbedFrameSelectedTab('rulesheets')+'_rules'
@@ -701,56 +736,55 @@ def addRulesheet(path):
     rules = [rule for rule in open(path,'rb').readlines()]
     rules=sorted(rules)
     sheetname = path.split('/')[-1].replace('.txt','')
-    app.openTabbedFrame('rulesheets')
-    with app.tab(path):
-        app.setTabText('rulesheets',path, sheetname)
-        app.addListBox(path+'_rules', [], 0,0,10,10)
-        for rule in rules:
-            app.addListItem(path+'_rules',rule)
-        app.setListBoxGroup(path+'_rules')
-        app.setListBoxChangeFunction(path+'_rules',updateRuleeditEntry)
+    with app.tabbedFrame('rulesheets'):
+        with app.tab(path):
+            app.setTabText('rulesheets',path, sheetname)
+            app.addListBox(path+'_rules', [], 0,0,10,10)
+            for rule in rules:
+                app.addListItem(path+'_rules',rule)
+            app.setListBoxGroup(path+'_rules')
+            app.setListBoxChangeFunction(path+'_rules',updateRuleeditEntry)
 
 def deleteRule():
     sheetpath = app.getTabbedFrameSelectedTab('rulesheets')
     app.removeListItem(sheetpath+'_rules',app.getListBox(sheetpath+'_rules'))
 
 def updateIntabFromInpath():
-    # print('updateIntabFromInpath')
+    print('updateIntabFromInpath')
     CALLOUT = False
     if app.getListBox('inputs')!= None:
-        selected_form = app.getListBox('inputs')[0]
-        selected_tab = app.getTabbedFrameSelectedTab('inputs')
-        if selected_tab != selected_form:
-            # print('CHANGING')
+        selected_inpath = app.getListBox('inputs')[0]
+        selected_intab = app.getTabbedFrameSelectedTab('inputs')
+        if selected_intab != selected_inpath:
+            print('CHANGING')
             if CALLOUT:
-                app.setTabbedFrameSelectedTab('inputs', selected_form)
+                app.setTabbedFrameSelectedTab('inputs', selected_inpath)
             else:
-                app.setTabbedFrameSelectedTab('inputs', selected_form)
-
-
-# Catches loop
-def updateInpathFromIntab():
-    # for line in traceback.format_stack():
-    #     print(line.strip())
-    # print('updateInpathFromIntab')
-    selected_inpath = app.getListBox('inputs')[0]
-    selected_intab = app.getTabbedFrameSelectedTab('inputs')
+                app.setTabbedFrameSelectedTab('inputs', selected_inpath)
     selected_outpaths = app.getListBox('outputs')
-
-    if not selected_intab == selected_inpath:
-        # print('CHANGING')
-        app.selectListItem('inputs',selected_intab,callFunction=False)
+    selected_intab = app.getTabbedFrameSelectedTab('inputs')
     CALLOUT = False
-    # print(instoouts[selected_intab])
+    print('desired outpaths:' + str(instoouts[selected_intab]))
     for outpath in selected_outpaths:
-        # print(outpath)
+        print('actual outpath: '+outpath)
         if outpath not in instoouts[selected_intab]:
             CALLOUT = True
     if CALLOUT:
-        # print('desired outpath: ' + str(instoouts[selected_inpath]))
-        # print('actual outpath' + str(selected_outpaths))
-        # print('updating outpath from inpath!')
+        print('updating outpath from inpath!')
         updateOutpathFromInpath()
+
+# Catches loop
+def updateInpathFromIntab(event):
+    # for line in traceback.format_stack():
+    #     print(line.strip())
+    print('updateInpathFromIntab')
+    selected_inpath = app.getListBox('inputs')[0]
+    selected_intab = app.getTabbedFrameSelectedTab('inputs')
+
+    if not selected_intab == selected_inpath:
+        # print('CHANGING')
+        app.selectListItem('inputs',selected_intab)
+
 
 def updateOutTabFromOutpath():
     print('updateOutTabFromOutpath')
@@ -760,52 +794,37 @@ def updateOutTabFromOutpath():
     if app.getTabbedFrameSelectedTab('output_preview') not in outpaths:
         # print('CHANGING')
         app.setTabbedFrameSelectedTab('output_preview', outpaths[0])
+
+    inpath = outstoins[outpath]
     if inpath != app.getListBox('inputs')[0]:
-        # print('desired inpath: ' + inpath)
-        # print('actual inpath: ' + app.getListBox('inputs')[0])
-        # print('! updating inpath from outpath !')
+        print('desired inpath: ' + inpath)
+        print('actual inpath: ' + app.getListBox('inputs')[0])
+        print('! updating inpath from outpath !')
         updateInpathFromOutpath()
-        CALLOUT = True
 
 # catches loop
-def updateOutpathFromOutTab():
-    # print('updateOutpathFromOutTab')
-    CALLOUT = False
+def updateOutpathFromOutTab(event):
+    print('updateOutpathFromOutTab')
     outpath = app.getTabbedFrameSelectedTab('output_preview')
     if outpath not in app.getListBox('outputs'):
         # print('CHANGING')
         lb = app.getListBoxWidget('outputs')
         END = len(app.getAllListItems('outputs'))
         lb.selection_clear(0, END)
-        if CALLOUT:
-            app.selectListItem('outputs',outpath,callFunction=False)
-        else:
-            app.selectListItem('outputs',outpath,callFunction=False)
-    inpath = outstoins[outpath]
-    if inpath != app.getListBox('inputs')[0]:
-        # print('desired inpath: ' + inpath)
-        # print('actual inpath: ' + app.getListBox('inputs')[0])
-        # print('! updating inpath from outpath !')
-        updateInpathFromOutpath()
-        CALLOUT = True
+        app.selectListItem('outputs',outpath)
 
 
 def updateOutpathFromInpath():
-    # print('updateOutpathFromInpath')
+    print('updateOutpathFromInpath')
     inpath = app.getListBox('inputs')[0]
     lb = app.getListBoxWidget('outputs')
     END = len(app.getAllListItems('outputs'))
     lb.selection_clear(0, END)
     for outpath in instoouts[inpath]:
-        if instoouts[inpath].index(outpath) != len(instoouts[inpath])-1:
-            # print('implicitly selecting '+outpath)
-            app.selectListItem('outputs', outpath, callFunction = False)
-        else:
-            print('selecting '+outpath)
-            app.selectListItem('outputs',outpath)
+        app.selectListItem('outputs',outpath)
 
 def updateInpathFromOutpath():
-    # print('updateInpathFromOutpath')
+    print('updateInpathFromOutpath')
     outpath = app.getListBox('outputs')[0]
     inpath = outstoins[outpath]
     if app.getListBox('inputs')[0] != inpath:
@@ -827,82 +846,80 @@ with gui("OPC form2doc") as app:
             app.setListBoxGroup('inputs')
             app.setListBoxChangeFunction('inputs', updateIntabFromInpath)
 
-            app.startPanedFrame('input_tabs')
-            app.setStretch('column')
-            app.addLabel('Input Preview', 'Input Preview', 0,1)
-            app.addButton('Save Form',saveFormedit,32,1)
-            app.setStretch('both')
-            with app.tabbedFrame('inputs',1,1,1,31) as intabs:
-                app.setListBoxDropTarget('inputs', addInDrop, replace=False)
-                app.setTabbedFrameChangeFunction('inputs',updateInpathFromIntab)
-                intabs.changeOnFocus = False
-            app.stopPanedFrame()
-            app.startPanedFrame('outpaths')
-            app.setStretch('column')
-            app.addLabel('Outputs','Outputs',0,2)
-            app.addButton('Generate Output',generateOutput,32,2)
-            app.setStretch('both')
-            app.addListBox('outputs',[],1,2,1,31)
-            app.setListBoxGroup('outputs')
-            app.setListBoxMulti('outputs')
-            app.setListBoxChangeFunction('outputs', updateOutTabFromOutpath)
-            app.stopPanedFrame()
-            app.startPanedFrame('output_previews')
-            app.setStretch('column')
-            app.addLabel('Output Preview','Output Preview',0,3)
-            app.addButton('Save Output',saveOutput,32,3)
-            app.setStretch('both')
-            with app.tabbedFrame('output_preview',1,3) as outtabs:
-                app.setTabbedFrameChangeFunction('output_preview', updateOutpathFromOutTab)
-                intabs.changeOnFocus = False
-            app.stopPanedFrame()
+            with app.panedFrame('input_tabs'):
+                app.setStretch('column')
+                app.addLabel('Input Preview', 'Input Preview', 0,1)
+                app.addButton('Save Form',saveFormedit,32,1)
+                app.setStretch('both')
+                with app.tabbedFrame('inputs',1,1,1,31) as intabs:
+                    app.setListBoxDropTarget('inputs', addInDrop, replace=False)
+                    app.addLabel('plc','plc')
+                    app.hideLabel('plc')
+                    app.setTabbedFrameChangeFunction('inputs',updateInpathFromIntab)
+                    intabs.changeOnFocus = False
+            with app.panedFrame('outpaths'):
+                app.setStretch('column')
+                app.addLabel('Outputs','Outputs',0,2)
+                app.addButton('Generate Output',generateOutput,32,2)
+                app.setStretch('both')
+                app.addListBox('outputs',[],1,2,1,31)
+                app.setListBoxGroup('outputs')
+                app.setListBoxMulti('outputs')
+                app.setListBoxChangeFunction('outputs', updateOutTabFromOutpath)
+            with app.panedFrame('output_previews'):
+                app.setStretch('column')
+                app.addLabel('Output Preview','Output Preview',0,3)
+                app.addButton('Save Output',saveOutput,32,3)
+                app.setStretch('both')
+                with app.tabbedFrame('output_preview',1,3) as outtabs:
+                    app.addLabel('plc1','plc')
+                    app.hideLabel('plc1')
+
+                    app.setTabbedFrameChangeFunction('output_preview', updateOutpathFromOutTab)
+                    outtabs.changeOnFocus = False
+                    # outtabs.bind('<Button-1>', updateOutpathFromOutTab)
 
         with app.panedFrame('templates'):
-            app.startPanedFrame('in_temps')
-            app.setStretch('both')
-            with app.tabbedFrame('form_templates',35,0,1,30):
-                app.setTabbedFrameDropTarget('form_templates', addInTemplatesDrop)
-            app.setStretch('column')
-            app.addLabel('Form Template','Input Templates',34,0)
+            with app.panedFrame('in_temps'):
+                app.setStretch('both')
+                with app.tabbedFrame('form_templates',35,0,1,30):
+                    app.setTabbedFrameDropTarget('form_templates', addInTemplatesDrop)
+                app.setStretch('column')
+                app.addLabel('Form Template','Input Templates',34,0)
 
-            app.addButton('>',pasteEntry2Rule,67,0)
-            app.addButton('Save to Form Template', saveFormTemplate,68,0)
-            app.addEntry('form_entry_edit',66,0)
+                app.addButton('>',pasteEntry2Rule,67,0)
+                app.addButton('Save to Form Template', saveFormTemplate,68,0)
+                app.addEntry('form_entry_edit',66,0)
 
-            app.closePanedFrame()
+            with app.panedFrame('rulesheets'):
+                app.setStretch('column')
+                app.addLabel('Rule Sheets','Rule Sheets',34,1,2,1)
 
-            app.startPanedFrame('rulesheets')
-            app.setStretch('column')
-            app.addLabel('Rule Sheets','Rule Sheets',34,1,2,1)
+                app.addButton('Add Replacement',addReplacement,68,1)
+                app.addButton('Save Rule Sheet',saveRulesheet,69,2)
+                app.addButton('Delete Rule', deleteRule,69,1)
+                app.addEntry('rule_edit',66,1,2,1)
+                app.setEntrySubmitFunction('rule_edit',updateRules)
+                app.addButton('delete last',delEntryFromRule,67,1)
+                app.addButton('Add Condition',addCondition,68,2)
 
-            app.addButton('Add Replacement',addReplacement,68,1)
-            app.addButton('Save Rule Sheet',saveRulesheet,69,2)
-            app.addButton('Delete Rule', deleteRule,69,1)
-            app.addEntry('rule_edit',66,1,2,1)
-            app.setEntrySubmitFunction('rule_edit',updateRules)
-            app.addButton('delete last',delEntryFromRule,67,1)
-            app.addButton('Add Condition',addCondition,68,2)
-
-            app.setStretch('both')
-            with app.tabbedFrame('rulesheets',35,1,2,30):
-                app.setTabbedFrameDropTarget('rulesheets', addRulesheetsDrop)
-
-            app.closePanedFrame()
-
-            app.startPanedFrame('out_temps')
-            app.setStretch('column')
-            app.addLabel('out_templates','Output Templates',34,3)
-            app.addButton('<', pasteOutfield,66,3)
-
-            app.setStretch('both')
-            with app.tabbedFrame('out_templates',35,3,10,10):
-                app.setTabbedFrameDropTarget('out_templates', addOutTemplatesDrop)
+                app.setStretch('both')
+                with app.tabbedFrame('rulesheets',35,1,2,30):
+                    app.setTabbedFrameDropTarget('rulesheets', addRulesheetsDrop)
 
 
-            app.closePanedFrame()
 
-            app.addButton('Remove Output Template',removeOutputTemplate,69,3)
-            app.setButtonTooltip('Remove Output Template','Does not delete output template from hard drive.')
+            with app.panedFrame('out_temps'):
+                app.setStretch('column')
+                app.addLabel('out_templates','Output Templates',34,3)
+                app.addButton('<', pasteOutfield,66,3)
+
+                app.setStretch('both')
+                with app.tabbedFrame('out_templates',35,3,10,10):
+                    app.setTabbedFrameDropTarget('out_templates', addOutTemplatesDrop)
+
+                app.addButton('Remove Output Template',removeOutputTemplate,69,3)
+                app.setButtonTooltip('Remove Output Template','Does not delete output template from hard drive.')
 
 
 
