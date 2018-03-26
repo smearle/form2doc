@@ -219,7 +219,7 @@ def addIn(filepath):
             with app.tab(filepath):
                 # intab = intabs.widgetStore[filepath][0]
                 # print(intab)
-                # pprint(dir(intab))
+                # print(dir(intab))
                 # intab.bind('<Button-1>', updateInpathFromIntab)
                 app.setTabText('inputs',filepath,fullname)
                 with app.scrollPane('Worker Form Edit' + filepath):
@@ -331,12 +331,18 @@ class liveDoc(object):
         self.text = []
         # A list the length of the document's plaintext, where each is a triple
         # of positions (par,run, char)
-        # specifying the character's position in the docx object.
+        # specifying the/ character's position in the docx object.
         self.txtodocpos = []
         # The tkinter text widget with which the doc is to be binded for live editing.
         self.textwidget = textwidget
-
-
+        # A boolean tracking whether the command button is being held
+        self.cmnd_press = False
+        self.ctrl_press = False
+        # tkinter textwidget indices of form being replaced
+        self.formstart = '1.0'
+        self.formstart = '1.0'
+        self.insert = self.formstart
+        
         row, i, j, k = 0, 0, 0, 0
         for p in self.doc.paragraphs:
             self.text +=['']
@@ -362,23 +368,27 @@ class liveDoc(object):
 
         def key(event):
             ''' Add one character to document.'''
-            print(repr(event.char))
-            print(event.type)
-            if '@' in event.char:
-                print('command')
+            print(event.keysym, event.type,event.char)
+           # if self.cmd_bool or self.ctrl_bool:
+           #     print('command/control key is depressed - not recording keystrokes as text')
+           #     return
+            if event.keysym == 'form2doc_replacement':
+                self.textwidget.mark_set('insert',self.insert)
             if event.char and event.char not in [u'\uf700',u'\uf701',u'\uf702',u'\uf703']:
                 # delete selected characters, if any
-                try:
-                    selection = len(event.widget.get('sel.first', 'sel.last'))
-                    print('selection length: '+ str(selection))
+                selection_len = len(event.widget.get('sel.first', 'sel.last'))
+                if selection_len == 0:
+                    print('entering character w/o deletion')
+                    txpos = self.textwidget.index('insert').split('.')
+                else:
+                    print('entering character after deletion')
                     txpos = self.textwidget.index('sel.first').split('.')
                     backspace(event)
-                except TclError:
-                    txpos = self.textwidget.index('insert').split('.')
+                print('selection length: '+ str(selection_len))
                 row, col = int(txpos[0])-1,int(txpos[1])
                 print(row, col)
                 txtodocpos_row = self.txtodocpos[row]
-                print(txtodocpos_row)
+                # print(txtodocpos_row)
                 # in case we are adding to the end of a paragraph
                 if col == len(txtodocpos_row):
                     # in case the paragraph is empty
@@ -394,21 +404,21 @@ class liveDoc(object):
                 currun.text = currun.text[:c] + event.char +currun.text[c:]
                 # insert new pos-list item
                 self.txtodocpos[row].insert(col,(p,r,c))
-                print(self.txtodocpos[row])
+                # print(self.txtodocpos[row])
                 # adjust the char-pos of all positions left in the run
                 # c += 1
                 ccol = col
                 print(len(currun.text), currun.text)
                 while c < len(currun.text):
                     self.txtodocpos[row][ccol] = (p,r,c)
-                    print(self.txtodocpos[row])
+                    # print(self.txtodocpos[row])
 
                     ccol += 1
                     c+=1
                 self.text[row] = self.text[row][:col] + event.char + self.text[row][col+1:]
 
                 docpos0 = self.txtodocpos[row]
-                print(docpos0)
+                # print(docpos0)
 
         # from Scanny: https://github.com/python-openxml/python-docx/issues/33
         def delete_paragraph(paragraph):
@@ -417,22 +427,37 @@ class liveDoc(object):
             p._p = p._element = None
 
         def backspace(event):
-            ''' For cutting, backspacing, deleting '''
-            try:
-                txpos = self.textwidget.index('sel.last').split('.')
-                # delete multi-character selection in text-widget
-                selection = len(event.widget.get('sel.first', 'sel.last'))
-            except TclError:
-                txpos = self.textwidget.index('insert').split('.')
-                # or else delete a single character
-                selection = 1
+            ''' For cutting, backspacing, deleting. Deletes moving backward from cursor. '''
+       #     try:
+            if event.keysym == 'form2doc_replacement':
+                self.textwidget.mark_set('sel.first',self.formstart)
+                self.textwidget.mark_set('sel.last',self.formend)
+                self.insert = self.formstart
+
+            print('sel.first in backspace: ', self.textwidget.index('sel.first'))
+            print('sel.last in backspace: ', self.textwidget.index('sel.last'))
+
+            # print(self.textwidget.get('sel.last', 'end'))
+            txpos = self.textwidget.index('sel.last').split('.')
+            # delete multi-character selection in text-widget
+            selection_len = len(event.widget.get('sel.first', 'sel.last'))
             print('selection: ' + str(event.widget.get('sel.first', 'sel.last')))
-            print(str(selection)+ ' characters selected')
-            row, col = int(txpos[0])-1,int(txpos[1])
+            if selection_len == 0:
+                selection_len = 1
+       #     except TclError:
+       #         txpos = self.textwidget.index('insert').split('.')
+       #         # or else delete a single character
+       #         selection = 1
+            print(str(selection_len)+ ' characters set for deletion')
+            print('textwidget index: ', txpos)
+            row, col = int(txpos[0])-1,int(txpos[1]) 
+            print('text in liveDoc paragraph: ', self.text[row])
+            # print('text in ocx paragraph: ', self.doc,[row])            
             # assuming a new line equates to a new paragraph
+            print(len(self.doc.paragraphs),'paragraphs in docx object, selecting paragraph number ',row)
             curpar = self.doc.paragraphs[row]
             s = 0
-            while s < selection:
+            while s < selection_len:
                 # delete moving backwards from cursor
                 while col - 1 not in range(len(self.text[row])):
                     # delete empty paragraph
@@ -448,8 +473,8 @@ class liveDoc(object):
                 docpos = self.txtodocpos[row][col-1]
                 p, r, c = docpos[0],docpos[1],docpos[2]-1
                 currun = self.doc.paragraphs[p].runs[r]
-                print(row,col)
-                print(self.text[row])
+                print('text widget position, row: ', row, 'column: ',col)
+                # print(self.text[row])
                 print(docpos)
                 print(currun.text)
                 self.text[row]=self.text[row][:col-1] + self.text[row][col:]
@@ -457,6 +482,8 @@ class liveDoc(object):
                 self.txtodocpos[row]=self.txtodocpos[row][:-1]
                 col -= 1
                 s+=1
+                self.textwidget.mark_set('sel.first','1.0')
+                self.textwidget.mark_set('sel.last','1.0')
             # print(self.text[row])
             # print(currun.text)
 
@@ -465,83 +492,110 @@ class liveDoc(object):
             '''
             cliptext = event.widget.clipboard_get()
             print('cliptext: '+cliptext)
-            if not cliptext and self.textwidget.get('sel.first', 'sel.last'):
-                backspace()
-            else:
+            # delete active selection, or form2doc field
+            if (not cliptext and self.textwidget.get('sel.first', 'sel.last')) or event.keysym == 'form2doc_replacement':
+                backspace(event)
                 # write reverse so as to skip moving the cursor
-                for c in cliptext[::-1]:
-                    event.char = c
-                    key(event)
-            # try:
-            #     txpos = self.textwidget.index('sel.first').split('.')
-            #     # deleting selection in text-widget
-            #     backspace(event)
-            # except TclError:
-            #     txpos = self.textwidge.index('insert').split('.')
-            # print('welcome to paste')
-            # int(txpos[0])-1,int(txpos[1])
-            # # TODO: Paste with style/formatting?
-            # docpos = self.txtodocpos[txpos]
-            # p, r, c = docpos[0],docpos[1],docpos[2]
-            # currun = self.doc.paragraphs[p].runs[r]
-            # pastetxt = app.clipboard_get()
-            # self.text = self.text[:txpos] + pastetxt + self.text[txpos + len(pastetxt):]
-            # currun.text = currun.text[c] + pastetxt + currun.text[c + len(pastetxt):]
-            # self.txtodocpos = self.txtodocpos[:txpos] + [(p,r,c+i) for i in range(len(pastetxt))] + txtodocpos[txpos + len(pastetxt):]
+            for c in cliptext[::-1]:
+                event.char = c
+                key(event)
+                if event.keysym == 'form2doc_replacement':
+                    self.insert = self.insert.split('.')[0] + '.'+ str(int(self.insert.split('.')[1])+1)
 
-        textwidget.bind('<KeyRelease>', key)
+        def cmdBool(event):
+            self.cmnd_press = not self.cmnd_press
+            print('cmnd_press: '+str(self.cmnd_press))
+            
+        def ctrlBool(event):
+            self.cmnd_press = not self.cmnd_press
+            print('ctrl_press: '+str(self.cmnd_press))
+
+        def specialBool(event):
+            # when these keys are depressed, further keystrokes should not be registered as entered text
+            if event.keysym == 'Meta_L': cmdBool(event)
+            elif event.keysym == 'Control_L': ctrlBool(event)
+
+        textwidget.bind('<KeyPress>', key)
+        # textwidget.bind('<KeyRelease>', specialBool)
         textwidget.bind('<BackSpace>', backspace)
         textwidget.bind('<Command-v>', paste)
-        textwidget.bind('<Command-c', None)
-        textwidget.bind('Command-x',None)
+        # textwidget.bind('<Command-c', None)
+        # textwidget.bind('<Command-x>',None)
+        textwidget.bind('<Command-KeyPress>',lambda x: print('command keypress'))
+        textwidget.bind('<Control-KeyPress>',lambda x : print('control keypress'))
+
+
 
         self.textwidget.insert("insert",'\n'.join(self.text))
-        # # Empty event obkject allowing for simulation of keystrokes
-        # event = Event()
-        # compiled_rules = compileRules()
-        # for rule in compiled_rules:
-        #     for replacee in rule.replacees:
-        #         print('replacee: '+replacee)
-        #         print('replacement: '+rule.replacement)
-        #         replacement = rule.replacement
-        #         # find replacement positions for par in self.text:
-        #         for par in self.text:
-        #             j = par.upper().find(replacee.upper())
-        #             while j >=0:
-        #                 # the position of the current replacee in the paragraph
-        #                 # print(par)
-        #                 print('replacee index: '+str(j))
-        #                 print('paragraph length: '+str(len(par)))
-        #                 if j>2 and par[j-2] == '.':
-        #                     replacement = replacement.capitalize()
-        #                 elif j>4 and self.text[j-4:j-1] == '(n)':
-        #                     r = replacement[0]
-        #                     self.textwidget.mark_set("insert", "%d.%d" % (i + 1, j-1))
-        #                     if r == 'a' or r=='e' or r=='u' or r=='i' or r=='o':
-        #                         backspace(event)
-        #                         self.textwidget.mark_set("insert", "%d.%d" % (i + 1, j-3))
-        #                         backspace(event)
-        #                         j -= 2
-        #                     else:
-        #                         backspace(event)
-        #                         backspace(event)
-        #                         backspace(event)
-        #                         j -= 3
-        #                 self.textwidget.clipboard_clear()
-        #                 self.textwidget.clipboard_append(replacement)
-        #                 self.textwidget.mark_set("sel.first", "%d.%d" % (i, j))
-        #                 # print('replacee length: '+ str(len(replacee)))
-        #                 # # print('sel.first position: '+self.textwidget.get('sel.first'))
-        #                 j += len(replacement)
-        #                 #
-        #                 self.textwidget.mark_set("sel.last", "%d.%d" % (i, j))
-        #                 # print('sel.first position: '+self.textwidget.get('sel.first'))
-        #                 print('selection: ' + str(self.textwidget.get('sel.first', 'sel.last')))
-        #                 event.widget = self.textwidget
-        #                 paste(event)
-        #                 j = par[j:].upper().find(replacee.upper())
-        #
-        #             i += 1
+        # Empty event obkject allowing for simulation of keystrokes
+        event = Event()
+        event.keysym = 'form2doc_replacement'
+        event.type = 'sme'   
+        compiled_rules = compileRules()
+        p = 1
+        for par in self.text:
+            print('searching par ',p)
+
+            for rule in compiled_rules:
+                for replacee in rule.replacees:
+                    replacement = rule.replacement.strip('\n')
+                    # find replacement positions for par in self.text:
+                    # print('docLive text: ', self.text)
+                    # print('docLive text length (i.e., num paragraphs): ', len(self.text))
+                    c = par.upper().find(replacee.upper())
+                    while replacee in par:
+                        print('replacee: '+replacee)
+                        print('replacement: '+rule.replacement)
+
+                        print('found replacee at ',c)
+                        # the position of the current replacee in the paragraph
+                        # print(par)
+                        print('replacee index: '+str(c))
+                        print('paragraph length: '+str(len(par)))
+                        print('replacee from paragraph: ',par[c:c+len(replacee)])
+                        if c>2 and par[c-2] == '.':
+                            print('capitalizing replacement')
+                            replacement = replacement.capitalize()
+                        elif c>4 and par[c-4:c-1] == '(n)':
+                            r = replacement[0]
+                            self.textwidget.mark_set("insert", "%d.%d" % (p, c-1))
+                            if r == 'a' or r=='e' or r=='u' or r=='i' or r=='o':
+                                print('replacement follows \'an\'')
+                                backspace(event)
+                                self.textwidget.mark_set("insert", "%d.%d" % (p, c-3))
+                                backspace(event)
+                                c -= 2
+                            else:
+                                print('replacement follows \'a\'')
+                                backspace(event)
+                                backspace(event)
+                                backspace(event)
+                                c -= 3
+                        self.textwidget.clipboard_clear()
+                        self.textwidget.clipboard_append(replacement)
+                        # self.textwidget.mark_set("field.start", "%d.%d" % (p, c))
+                        # print('field.start',"%d.%d" % (p, c) )
+                        # print('replacee length: '+ str(len(replacee)))
+                        # # print('sel.first position: '+self.textwidget.get('sel.first'))
+                        self.formstart =  "%d.%d" % (p, c)
+                        c += len(replacee)
+                        self.formend =  "%d.%d" % (p, c)
+                        # self.textwidget.mark_set("field.end", "%d.%d" % (p, c))
+                        # print('field.end',"%d.%d" % (p, c) )
+                        # print('sel.first position: '+self.textwidget.get('sel.first'))
+                        print('selection: ' + self.textwidget.get(self.formstart,self.formend))
+                        # print('affected paragraph: ', par)
+                        event.widget = self.textwidget
+                        self.textwidget.delete(self.formstart,self.formend)
+                        self.textwidget.insert(self.formstart, replacement)
+                        par = par[:c-len(replacee)] + replacement + par[c:]
+                        print('pasting with paragraph ',p,'and column ', c)
+                        paste(event)
+                        c = c-len(replacee)+ par[c-len(replacee):].upper().find(replacee.upper())
+                        print('found ',replacee,'at ',c)
+                        print('paragraph: ', par)
+                        print('new widget text: ',textwidget.get('1.0','end'))
+            p += 1
 
     def save(self, outpath):
         return self.doc.save(outpath)
